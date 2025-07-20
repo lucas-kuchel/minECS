@@ -1,0 +1,20 @@
+{
+    "version": 10,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 24
+    },
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Default install",
+            "description": "Installs minecs to the system",
+            "hidden": false,
+            "cacheVariables": {
+                "CMAKE_CXX_STANDARD": "20",
+                "CMAKE_CXX_STANDARD_REQUIRED": true,
+                "CMAKE_CXX_EXTENSIONS": false
+            }
+        }
+    ]
+}

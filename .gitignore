@@ -1,0 +1,11 @@
+# CMake config dir
+build/
+
+# Cache dir for some tools
+.cache/
+
+# VSCode stuffs just in case
+.vscode/
+
+# macOS
+.DS_Store
