@@ -21,9 +21,9 @@ namespace minecs
 
             auto operator*() const
             {
-                entity entity = m_entities->dense()[m_index];
+                entity entity = m_entities->get_dense()[m_index];
 
-                return std::tuple<struct entity, Args&...>(entity, m_ecs->template get_sparse_set<Args>().dense()[m_ecs->template get_sparse_set<Args>().sparse()[entity.id]]...);
+                return std::tuple<struct entity, Args&...>(entity, m_ecs->template get_sparse_set<Args>().get_dense()[m_ecs->template get_sparse_set<Args>().get_sparse()[entity.id]]...);
             }
 
             bool operator!=(const entity_view::iterator&) const
@@ -54,28 +54,28 @@ namespace minecs
 
         [[nodiscard]] iterator begin()
         {
-            std::size_t end = m_entities->dense().size();
+            std::size_t end = m_entities->get_dense().size();
 
             return entity_view::iterator(m_ecs, m_entities, 0, end);
         }
 
         [[nodiscard]] iterator end()
         {
-            std::size_t end = m_entities->dense().size();
+            std::size_t end = m_entities->get_dense().size();
 
             return entity_view::iterator(m_ecs, m_entities, end, end);
         }
 
         [[nodiscard]] const iterator begin() const
         {
-            std::size_t end = m_entities->dense().size();
+            std::size_t end = m_entities->get_dense().size();
 
             return entity_view::iterator(m_ecs, m_entities, 0, end);
         }
 
         [[nodiscard]] const iterator end() const
         {
-            std::size_t end = m_entities->dense().size();
+            std::size_t end = m_entities->get_dense().size();
 
             return entity_view::iterator(m_ecs, m_entities, end, end);
         }

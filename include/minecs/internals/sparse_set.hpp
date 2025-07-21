@@ -72,7 +72,12 @@ namespace minecs
 
         [[nodiscard]] inline bool remove(size_type index)
         {
-            if (index >= m_sparse.size() || m_sparse[index] == DEAD_INDEX)
+            if (index >= m_sparse.size())
+            {
+                return false;
+            }
+
+            if (m_sparse[index] == DEAD_INDEX)
             {
                 return false;
             }
@@ -169,22 +174,22 @@ namespace minecs
             return m_dense.end();
         }
 
-        [[nodiscard]] inline dense_type& dense()
+        [[nodiscard]] inline dense_type& get_dense()
         {
             return m_dense;
         }
 
-        [[nodiscard]] inline const dense_type& dense() const
+        [[nodiscard]] inline const dense_type& get_dense() const
         {
             return m_dense;
         }
 
-        [[nodiscard]] inline sparse_type& sparse()
+        [[nodiscard]] inline sparse_type& get_sparse()
         {
             return m_sparse;
         }
 
-        [[nodiscard]] inline const sparse_type& sparse() const
+        [[nodiscard]] inline const sparse_type& get_sparse() const
         {
             return m_sparse;
         }

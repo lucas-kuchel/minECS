@@ -31,7 +31,7 @@ namespace minecs
         bitset_tree(const bitset_tree& other)
             : m_contiguous(other.m_contiguous)
         {
-            m_root = CloneSubtree(other.m_root, m_pool);
+            m_root = clone_subtree(other.m_root, m_pool);
         }
 
         bitset_tree(bitset_tree&& other) noexcept

@@ -94,7 +94,7 @@ namespace minecs
             return entities;
         }
 
-        inline bool destroy_entity(entity entity)
+        [[nodiscard]] inline bool destroy_entity(entity entity)
         {
             if (has_entity(entity))
             {
@@ -106,48 +106,61 @@ namespace minecs
                 {
                     if (!archetype->remove(entity.id))
                     {
-                        return true;
+                        return false;
                     }
 
-                    if (archetype->entities().dense().size() == 0)
+                    if (archetype->get_entities().get_dense().size() == 0)
                     {
                         m_archetypes.remove(bitset);
                     }
                 }
 
                 m_free_list.push_back(entity.id);
-                m_entities[entity.id] = {std::numeric_limits<std::uint32_t>::max(), entity.generation};
+                m_entities[entity.id] = {std::numeric_limits<size_type>::max(), entity.generation};
                 m_entity_masks[entity.id].reset();
             }
             else
             {
-                return true;
+                return false;
             }
 
-            return false;
+            return true;
         }
 
-        inline bool destroy_entities(const std::vector<entity>& entities)
+        [[nodiscard]] inline bool destroy_entities(const std::vector<entity>& entities)
         {
             for (const auto& entity : entities)
             {
-                if (destroy_entity(entity))
+                if (!destroy_entity(entity))
                 {
-                    return true;
+                    return false;
                 }
             }
 
-            return false;
+            return true;
         }
 
         [[nodiscard]] inline bool has_entity(entity entity) const
         {
-            return entity.id < m_entities.size() && m_entities[entity.id].generation == entity.generation && m_entities[entity.id].id != std::numeric_limits<std::uint32_t>::max();
+            return entity.id < m_entities.size() && m_entities[entity.id].generation == entity.generation && m_entities[entity.id].id != std::numeric_limits<size_type>::max();
+        }
+
+        [[nodiscard]] inline bool has_entities(const std::vector<entity>& entities) const
+        {
+            for (const auto& entity : entities)
+            {
+                if (!has_entity(entity))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         template <typename U>
         requires(descriptor::template contains<U>)
-        [[nodiscard]] inline bool has_component(entity entity) const
+        [[nodiscard]] inline bool entity_has_component(entity entity) const
         {
             if (has_entity(entity))
             {
@@ -159,46 +172,109 @@ namespace minecs
             return false;
         }
 
+        template <typename... Args2>
+        requires(descriptor::template contains<Args2> && ...)
+        [[nodiscard]] inline bool entity_has_components(entity entity) const
+        {
+            return (entity_has_component<Args2>(entity) && ...);
+        }
+
         template <typename U>
         requires(descriptor::template contains<U>)
-        inline bool add_component(entity entity, const U& component = U())
+        [[nodiscard]] inline bool entities_have_component(const std::vector<entity>& entities) const
+        {
+            for (const auto& entity : entities)
+            {
+                if (!entity_has_component<U>(entity))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        template <typename... Args2>
+        requires(descriptor::template contains<Args2> && ...)
+        [[nodiscard]] inline bool entities_have_components(const std::vector<entity>& entities) const
+        {
+            for (const auto& entity : entities)
+            {
+                if (!entity_has_components<Args2...>(entity))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        template <typename U>
+        requires(descriptor::template contains<U>)
+        [[nodiscard]] inline bool add_component(entity entity, U&& component)
         {
             if (has_entity(entity))
             {
                 auto& set = std::get<sparse_set<U, T>>(m_sparse_sets);
 
-                if (!set.insert(entity.id, component))
+                if (!set.insert(entity.id, std::forward<U>(component)))
                 {
-                    return true;
+                    return false;
                 }
 
                 constexpr std::size_t index = descriptor::template index<U>();
 
-                bitset& bitset = m_entity_masks[entity.id];
-                std::bitset<sizeof...(Args)> oldbitset = bitset;
+                bitset& target_bitset = m_entity_masks[entity.id];
+                bitset old_bitset = m_entity_masks[entity.id];
 
-                bitset.set(index);
+                target_bitset.set(index);
 
-                update_archetype(entity, oldbitset, bitset);
-
-                return false;
+                return update_archetype(entity, old_bitset, target_bitset);
             }
             else
             {
-                return true;
+                return false;
+            }
+        }
+
+        template <typename U, typename... Args2>
+        requires(sizeof...(Args2) > 0)
+        [[nodiscard]] inline bool add_component(entity entity, Args2&&... args)
+        {
+            if (has_entity(entity))
+            {
+                auto& set = std::get<sparse_set<U, T>>(m_sparse_sets);
+
+                if (!set.insert(entity.id, U(std::forward<Args2>(args)...)))
+                {
+                    return false;
+                }
+
+                constexpr std::size_t index = descriptor::template index<U>();
+
+                bitset& target_bitset = m_entity_masks[entity.id];
+                bitset old_bitset = m_entity_masks[entity.id];
+
+                target_bitset.set(index);
+
+                return update_archetype(entity, old_bitset, target_bitset);
+            }
+            else
+            {
+                return false;
             }
         }
 
         template <typename... Args2>
         requires(descriptor::template contains<Args2> && ...)
-        inline void add_components(entity entity, const Args2&... components)
+        [[nodiscard]] inline bool add_components(entity entity, const Args2&... components)
         {
-            return (add_component<Args2>(entity, components) || ...);
+            return (add_component<Args2>(entity, components) && ...);
         }
 
         template <typename U>
         requires(descriptor::template contains<U>)
-        inline bool remove_component(entity entity)
+        [[nodiscard]] inline bool remove_component(entity entity)
         {
             if (has_entity(entity))
             {
@@ -206,31 +282,29 @@ namespace minecs
 
                 if (!set.remove(entity.id))
                 {
-                    return true;
+                    return false;
                 }
 
                 constexpr std::size_t index = descriptor::template index<U>();
 
-                bitset& bitset = m_entity_masks[entity.id];
-                std::bitset<sizeof...(Args)> oldbitset = bitset;
+                bitset& target_bitset = m_entity_masks[entity.id];
+                bitset old_bitset = m_entity_masks[entity.id];
 
-                bitset.reset(index);
+                target_bitset.reset(index);
 
-                update_archetype(entity, oldbitset, bitset);
-
-                return false;
+                return update_archetype(entity, old_bitset, target_bitset);
             }
             else
             {
-                return true;
+                return false;
             }
         }
 
         template <typename... Args2>
         requires(descriptor::template contains<Args2> && ...)
-        inline bool remove_components(entity entity)
+        [[nodiscard]] inline bool remove_components(entity entity)
         {
-            return (RemoveComponent<Args2>(entity) || ...);
+            return (remove_component<Args2>(entity) && ...);
         }
 
         [[nodiscard]] inline bitset_tree<archetype<size_type>, size_type, sizeof...(Args)>& get_archetypes()
@@ -272,43 +346,43 @@ namespace minecs
         requires(descriptor::template contains<Args2> && ...)
         [[nodiscard]] inline auto get_entity_view(archetype<size_type>& archetype)
         {
-            return entity_view<ecs<descriptor>, T, Args2...>(this, archetype.entities());
+            return entity_view<ecs<descriptor>, T, Args2...>(this, archetype.get_entities());
         }
 
         template <typename... Args2>
         requires(descriptor::template contains<Args2> && ...)
         [[nodiscard]] inline const auto get_entity_view(archetype<size_type>& archetype) const
         {
-            return entity_view<ecs<descriptor>, T, Args2...>(this, archetype.entities());
+            return entity_view<ecs<descriptor>, T, Args2...>(this, archetype.get_entities());
         }
 
     private:
-        inline bool update_archetype(entity entity, const bitset& oldbitset, const bitset& newbitset)
+        [[nodiscard]] inline bool update_archetype(entity entity, const bitset& old_bitset, const bitset& new_bitset)
         {
-            if (oldbitset == newbitset)
+            if (old_bitset == new_bitset)
             {
-                return true;
+                return false;
             }
 
-            if (archetype<size_type>* oldArchetype = m_archetypes.get(oldbitset))
+            if (archetype<size_type>* old_archetype = m_archetypes.get(old_bitset))
             {
-                if (!oldArchetype->remove(entity.id))
+                if (!old_archetype->remove(entity.id))
                 {
-                    return true;
+                    return false;
                 }
 
-                if (oldArchetype->entities().dense().size() == 0)
+                if (old_archetype->get_entities().get_dense().size() == 0)
                 {
-                    m_archetypes.remove(oldbitset);
+                    m_archetypes.remove(old_bitset);
                 }
             }
 
-            if (!m_archetypes.get_or_insert(newbitset).insert(entity.id, entity))
+            if (!m_archetypes.get_or_insert(new_bitset).insert(entity.id, entity))
             {
-                return true;
+                return false;
             }
 
-            return false;
+            return true;
         }
 
         template <std::size_t... Ns>
