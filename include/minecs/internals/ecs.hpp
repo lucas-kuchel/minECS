@@ -100,7 +100,7 @@ namespace minecs
             {
                 const bitset& bitset = m_entity_masks[entity.id];
 
-                RemoveEntityFrom_sparse_sets(entity, bitset);
+                remove_entity_from_sparse_sets(entity, bitset);
 
                 if (archetype<size_type>* archetype = m_archetypes.get(bitset))
                 {
@@ -259,7 +259,7 @@ namespace minecs
 
         template <typename... Args2>
         requires(descriptor::template contains<Args2> && ...)
-        [[nodiscard]] inline constexpr bitset get_bitmask()
+        [[nodiscard]] static inline constexpr bitset get_bitmask()
         {
             bitset bitset;
 
@@ -271,6 +271,13 @@ namespace minecs
         template <typename... Args2>
         requires(descriptor::template contains<Args2> && ...)
         [[nodiscard]] inline auto get_entity_view(archetype<size_type>& archetype)
+        {
+            return entity_view<ecs<descriptor>, T, Args2...>(this, archetype.entities());
+        }
+
+        template <typename... Args2>
+        requires(descriptor::template contains<Args2> && ...)
+        [[nodiscard]] inline const auto get_entity_view(archetype<size_type>& archetype) const
         {
             return entity_view<ecs<descriptor>, T, Args2...>(this, archetype.entities());
         }
@@ -307,7 +314,7 @@ namespace minecs
         template <std::size_t... Ns>
         inline void remove_entity_from_sparse_sets_impl(entity entity, const bitset& mask, std::index_sequence<Ns...>)
         {
-            ((mask.test(Ns) ? std::get<Ns>(m_sparse_sets).Remove(entity.id) : void()), ...);
+            ((mask.test(Ns) ? std::get<Ns>(m_sparse_sets).remove(entity.id) : void()), ...);
         }
 
         inline void remove_entity_from_sparse_sets(entity entity, const bitset& mask)

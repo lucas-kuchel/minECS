@@ -31,7 +31,7 @@ namespace minecs
             return m_entities.remove(id);
         }
 
-        [[nodiscard]] sparse_set<entity, size_type>& entities()
+        [[nodiscard]] sparse_set<entity, size_type>& get_entities()
         {
             return m_entities;
         }
