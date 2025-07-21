@@ -33,10 +33,10 @@ namespace minecs
         {
             if (index >= m_sparse.size())
             {
-                m_sparse.resize(index + 1, DEAD_INDEX);
+                m_sparse.resize(index + 1, dead_index);
             }
 
-            if (m_sparse[index] != DEAD_INDEX)
+            if (m_sparse[index] != dead_index)
             {
                 return false;
             }
@@ -54,10 +54,10 @@ namespace minecs
         {
             if (index >= m_sparse.size())
             {
-                m_sparse.resize(index + 1, DEAD_INDEX);
+                m_sparse.resize(index + 1, dead_index);
             }
 
-            if (m_sparse[index] != DEAD_INDEX)
+            if (m_sparse[index] != dead_index)
             {
                 return false;
             }
@@ -77,7 +77,7 @@ namespace minecs
                 return false;
             }
 
-            if (m_sparse[index] == DEAD_INDEX)
+            if (m_sparse[index] == dead_index)
             {
                 return false;
             }
@@ -87,7 +87,7 @@ namespace minecs
 
             if (dense_index == last_index)
             {
-                m_sparse[index] = DEAD_INDEX;
+                m_sparse[index] = dead_index;
 
                 m_dense.pop_back();
                 m_dense_to_index.pop_back();
@@ -101,7 +101,7 @@ namespace minecs
             m_dense_to_index[dense_index] = last_entity;
             m_sparse[last_entity] = dense_index;
 
-            m_sparse[index] = DEAD_INDEX;
+            m_sparse[index] = dead_index;
 
             m_dense.pop_back();
             m_dense_to_index.pop_back();
@@ -116,7 +116,7 @@ namespace minecs
                 return nullptr;
             }
 
-            if (m_sparse[index] == DEAD_INDEX)
+            if (m_sparse[index] == dead_index)
             {
                 return nullptr;
             }
@@ -131,7 +131,7 @@ namespace minecs
                 return nullptr;
             }
 
-            if (m_sparse[index] == DEAD_INDEX)
+            if (m_sparse[index] == dead_index)
             {
                 return nullptr;
             }
@@ -146,7 +146,7 @@ namespace minecs
                 return false;
             }
 
-            if (m_sparse[index] == DEAD_INDEX)
+            if (m_sparse[index] == dead_index)
             {
                 return false;
             }
@@ -169,7 +169,7 @@ namespace minecs
             return m_dense.end();
         }
 
-        inline const_iterator end() const noexcept
+        [[nodiscard]] inline const_iterator end() const noexcept
         {
             return m_dense.end();
         }
@@ -195,7 +195,7 @@ namespace minecs
         }
 
     private:
-        static constexpr size_type DEAD_INDEX = std::numeric_limits<size_type>::max();
+        static constexpr size_type dead_index = std::numeric_limits<size_type>::max();
 
         dense_type m_dense;
         sparse_type m_sparse;

@@ -47,6 +47,8 @@ namespace minecs
             std::size_t m_end;
         };
 
+        using const_iterator = const iterator;
+
         entity_view(T* ecs, sparse_set<entity, size_type>& entities)
             : m_ecs(ecs), m_entities(&entities)
         {
@@ -66,14 +68,14 @@ namespace minecs
             return entity_view::iterator(m_ecs, m_entities, end, end);
         }
 
-        [[nodiscard]] const iterator begin() const
+        [[nodiscard]] const_iterator begin() const
         {
             std::size_t end = m_entities->get_dense().size();
 
             return entity_view::iterator(m_ecs, m_entities, 0, end);
         }
 
-        [[nodiscard]] const iterator end() const
+        [[nodiscard]] const_iterator end() const
         {
             std::size_t end = m_entities->get_dense().size();
 
