@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bitset>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -16,6 +17,9 @@ namespace minecs
 
         static constexpr auto size = N;
         static constexpr size_type block_size = 1024;
+
+        static constexpr size_type rounded_size = (N + 7) / 8 * 8;
+        static constexpr size_type num_levels = rounded_size / 8;
 
         using iterator = std::vector<std::pair<std::bitset<size>, type>>::iterator;
         using const_iterator = std::vector<std::pair<std::bitset<size>, type>>::const_iterator;
@@ -40,8 +44,7 @@ namespace minecs
             other.m_root = nullptr;
         }
 
-        bitset_tree&
-        operator=(const bitset_tree& other)
+        bitset_tree& operator=(const bitset_tree& other)
         {
             if (this == &other)
             {
@@ -64,7 +67,7 @@ namespace minecs
                 return *this;
             }
 
-            remove(std::bitset<size>());
+            clear_tree(m_root);
 
             m_root = other.m_root;
             m_pool = std::move(other.m_pool);
@@ -82,72 +85,81 @@ namespace minecs
 
         [[nodiscard]] type& get_or_insert(const std::bitset<size>& bitset)
         {
-            node* node = m_root;
+            node* current = m_root;
 
-            for (std::size_t i = 0; i < size; i++)
+            for (size_type level = 0; level < num_levels; level++)
             {
-                struct node*& next = bitset[i] ? node->one : node->zero;
+                unsigned char key = get_byte(bitset, level);
 
+                node*& next = current->children[key];
                 if (!next)
                 {
                     next = m_pool.allocate();
                     *next = {};
                 }
 
-                node = next;
+                current = next;
             }
 
-            if (!node->archetype_index.has_value())
+            if (!current->archetype_index.has_value())
             {
-                node->archetype_index = m_contiguous.size();
-                m_contiguous.push_back(std::make_pair(bitset, T()));
+                current->archetype_index = m_contiguous.size();
+                m_contiguous.emplace_back(bitset, T{});
             }
 
-            return m_contiguous[node->archetype_index.value()].second;
+            return m_contiguous[current->archetype_index.value()].second;
         }
 
         [[nodiscard]] type* get(const std::bitset<size>& bitset)
         {
-            node* node = m_root;
+            node* current = m_root;
 
-            for (std::size_t i = 0; i < size; i++)
+            for (size_type level = 0; level < num_levels; level++)
             {
-                node = bitset[i] ? node->one : node->zero;
+                unsigned char key = get_byte(bitset, level);
 
-                if (!node)
+                node*& next = current->children[key];
+
+                if (!next)
                 {
                     return nullptr;
                 }
+
+                current = next;
             }
 
-            if (!node->archetype_index.has_value())
+            if (!current->archetype_index.has_value())
             {
                 return nullptr;
             }
 
-            return &m_contiguous[node->archetype_index.value()].second;
+            return &m_contiguous[current->archetype_index.value()].second;
         }
 
         [[nodiscard]] const type* get(const std::bitset<size>& bitset) const
         {
-            node* node = m_root;
+            node* current = m_root;
 
-            for (std::size_t i = 0; i < size; i++)
+            for (size_type level = 0; level < num_levels; level++)
             {
-                node = bitset[i] ? node->one : node->zero;
+                unsigned char key = get_byte(bitset, level);
 
-                if (!node)
+                node*& next = current->children[key];
+
+                if (!next)
                 {
                     return nullptr;
                 }
+
+                current = next;
             }
 
-            if (!node->archetype_index.has_value())
+            if (!current->archetype_index.has_value())
             {
                 return nullptr;
             }
 
-            return &m_contiguous[node->archetype_index.value()].second;
+            return &m_contiguous[current->archetype_index.value()].second;
         }
 
         [[nodiscard]] iterator begin()
@@ -173,9 +185,7 @@ namespace minecs
     private:
         struct node
         {
-            node* zero = nullptr;
-            node* one = nullptr;
-
+            std::array<node*, 256> children{};
             std::optional<size_type> archetype_index;
         };
 
@@ -239,30 +249,84 @@ namespace minecs
             size_type m_index;
         };
 
-        bool remove_recursive(node*& node, const std::bitset<size>& bitset, size_type depth)
+        void clear_tree(node*& current)
         {
-            if (!node)
+            if (!current)
+            {
+                return;
+            }
+
+            for (auto*& child : current->children)
+            {
+                if (child)
+                {
+                    clear_tree(child);
+
+                    m_pool.deallocate(child);
+
+                    child = nullptr;
+                }
+            }
+
+            m_pool.deallocate(current);
+
+            current = nullptr;
+        }
+
+        [[nodiscard]] static std::uint8_t get_byte(const std::bitset<size>& bs, size_type byte_index)
+        {
+            std::uint8_t result = 0;
+
+            for (size_type i = 0; i < 8; i++)
+            {
+                size_type bit_index = byte_index * 8 + i;
+
+                if (bit_index < size && bs[bit_index])
+                {
+                    result |= (1 << i);
+                }
+            }
+
+            return result;
+        }
+
+        bool remove_recursive(node*& current, const std::bitset<size>& bitset, size_type level)
+        {
+            if (!current)
             {
                 return false;
             }
 
-            if (depth == size)
+            if (level == num_levels)
             {
-                node->archetype_index.reset();
+                current->archetype_index.reset();
+            }
+            else
+            {
+                std::uint8_t key = get_byte(bitset, level);
+                node*& next = current->children[key];
 
-                return node->zero == nullptr && node->one == nullptr;
+                if (remove_recursive(next, bitset, level + 1))
+                {
+                    m_pool.deallocate(next);
+                    next = nullptr;
+                }
             }
 
-            struct node*& next = bitset[depth] ? node->one : node->zero;
-
-            if (remove_recursive(next, bitset, depth + 1))
+            if (current->archetype_index.has_value())
             {
-                m_pool.deallocate(next);
-
-                next = nullptr;
+                return false;
             }
 
-            return node->archetype_index == std::nullopt && node->zero == nullptr && node->one == nullptr;
+            for (auto* child : current->children)
+            {
+                if (child)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         [[nodiscard]] node* clone_subtree(const node* source, node_pool& pool)
@@ -273,10 +337,15 @@ namespace minecs
             }
 
             node* clone = pool.allocate();
-            *clone = *source;
+            clone->archetype_index = source->archetype_index;
 
-            clone->zero = clone_subtree(source->zero, pool);
-            clone->one = clone_subtree(source->one, pool);
+            for (size_type i = 0; i < 256; i++)
+            {
+                if (source->children[i])
+                {
+                    clone->children[i] = clone_subtree(source->children[i], pool);
+                }
+            }
 
             return clone;
         }

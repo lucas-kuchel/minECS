@@ -51,6 +51,8 @@ namespace minecs
                 m_free_list.pop_back();
                 m_entities[index].generation++;
 
+                m_entity_masks[index].reset();
+
                 return m_entities[index];
             }
         }
@@ -72,11 +74,17 @@ namespace minecs
         requires(descriptor::template contains<Args2> && ...)
         inline entity create_entity(Args2&&... components)
         {
-            entity entity = create_blank_entity();
+            entity e = create_blank_entity();
 
-            add_components<Args2...>(entity, std::forward<Args2>(components)...);
+            constexpr auto mask = make_bitmask<Args2...>();
 
-            return entity;
+            m_entity_masks[e.id] = mask;
+
+            m_archetypes.get_or_insert(mask).insert(e.id, e);
+
+            (std::get<sparse_set<Args2, size_type>>(m_sparse_sets).insert(e.id, std::forward<Args2>(components)), ...);
+
+            return e;
         }
 
         template <typename... Args2>
@@ -142,7 +150,9 @@ namespace minecs
 
         [[nodiscard]] inline bool has_entity(entity entity) const
         {
-            return entity.id < m_entities.size() && m_entities[entity.id].generation == entity.generation && m_entities[entity.id].id != std::numeric_limits<size_type>::max();
+            return entity.id < m_entities.size() &&
+                   m_entities[entity.id].generation == entity.generation &&
+                   m_entities[entity.id].id != std::numeric_limits<size_type>::max();
         }
 
         [[nodiscard]] inline bool has_entities(const std::vector<entity>& entities) const
@@ -211,7 +221,7 @@ namespace minecs
 
         template <typename U>
         requires(descriptor::template contains<U>)
-        [[nodiscard]] inline bool add_component(entity entity, U&& component)
+        [[nodiscard]] inline bool add_component_to_entity(entity entity, U&& component)
         {
             if (has_entity(entity))
             {
@@ -237,9 +247,23 @@ namespace minecs
             }
         }
 
+        template <typename U>
+        requires(descriptor::template contains<U>)
+        [[nodiscard]] inline bool add_component_to_entities(const std::vector<entity>& entities, U&& component)
+        {
+            bool result = true;
+
+            for (auto& entity : entities)
+            {
+                result &= add_component_to_entity(entity, std::forward<U>(component));
+            }
+
+            return result;
+        }
+
         template <typename U, typename... Args2>
-        requires(sizeof...(Args2) > 0)
-        [[nodiscard]] inline bool add_component(entity entity, Args2&&... args)
+        requires((sizeof...(Args2) > 0) && descriptor::template contains<U>)
+        [[nodiscard]] inline bool add_component_to_entity(entity entity, Args2&&... args)
         {
             if (has_entity(entity))
             {
@@ -265,16 +289,44 @@ namespace minecs
             }
         }
 
+        template <typename U, typename... Args2>
+        requires((sizeof...(Args2) > 0) && descriptor::template contains<U>)
+        [[nodiscard]] inline bool add_component_to_entities(const std::vector<entity>& entities, Args2&&... args)
+        {
+            bool result = true;
+
+            for (auto& entity : entities)
+            {
+                result &= add_component_to_entity<U>(entity, std::forward<Args2>(args)...);
+            }
+
+            return result;
+        }
+
         template <typename... Args2>
         requires(descriptor::template contains<Args2> && ...)
-        [[nodiscard]] inline bool add_components(entity entity, const Args2&... components)
+        [[nodiscard]] inline bool add_components_to_entity(entity entity, const Args2&... components)
         {
-            return (add_component<Args2>(entity, components) && ...);
+            return (add_component_to_entity<Args2>(entity, components) && ...);
+        }
+
+        template <typename... Args2>
+        requires(descriptor::template contains<Args2> && ...)
+        [[nodiscard]] inline bool add_components_to_entities(const std::vector<entity>& entities, const Args2&... components)
+        {
+            bool result = true;
+
+            for (auto& entity : entities)
+            {
+                result &= add_components_to_entity<Args2...>(entity, components...);
+            }
+
+            return result;
         }
 
         template <typename U>
         requires(descriptor::template contains<U>)
-        [[nodiscard]] inline bool remove_component(entity entity)
+        [[nodiscard]] inline bool remove_component_from_entity(entity entity)
         {
             if (has_entity(entity))
             {
@@ -300,11 +352,39 @@ namespace minecs
             }
         }
 
+        template <typename U>
+        requires(descriptor::template contains<U>)
+        [[nodiscard]] inline bool remove_component_from_entities(const std::vector<entity>& entities)
+        {
+            bool result = true;
+
+            for (auto& entity : entities)
+            {
+                result &= remove_component_from_entity<U>(entity);
+            }
+
+            return result;
+        }
+
         template <typename... Args2>
         requires(descriptor::template contains<Args2> && ...)
-        [[nodiscard]] inline bool remove_components(entity entity)
+        [[nodiscard]] inline bool remove_components_from_entity(entity entity)
         {
-            return (remove_component<Args2>(entity) && ...);
+            return (remove_component_from_entity<Args2>(entity) && ...);
+        }
+
+        template <typename... Args2>
+        requires(descriptor::template contains<Args2> && ...)
+        [[nodiscard]] inline bool remove_components_from_entities(const std::vector<entity>& entities)
+        {
+            bool result = true;
+
+            for (auto& entity : entities)
+            {
+                result &= remove_components_from_entity<Args2...>(entity);
+            }
+
+            return result;
         }
 
         [[nodiscard]] inline bitset_tree<archetype<size_type>, size_type, sizeof...(Args)>& get_archetypes()
@@ -315,6 +395,16 @@ namespace minecs
         [[nodiscard]] inline const bitset_tree<archetype<size_type>, size_type, sizeof...(Args)>& get_archetypes() const
         {
             return m_archetypes;
+        }
+
+        [[nodiscard]] archetype<size_type>* get_archetype_by_mask(const bitset& mask)
+        {
+            return m_archetypes.get(mask);
+        }
+
+        [[nodiscard]] const archetype<size_type>* get_archetype_by_mask(const bitset& mask) const
+        {
+            return m_archetypes.get(mask);
         }
 
         template <typename U>
@@ -333,7 +423,7 @@ namespace minecs
 
         template <typename... Args2>
         requires(descriptor::template contains<Args2> && ...)
-        [[nodiscard]] static inline constexpr bitset get_bitmask()
+        [[nodiscard]] static inline constexpr bitset make_bitmask()
         {
             bitset bitset;
 

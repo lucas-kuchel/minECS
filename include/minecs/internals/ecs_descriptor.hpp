@@ -23,7 +23,8 @@ namespace minecs
     inline constexpr bool has_duplicate_types_v<First, Rest...> = (std::is_same_v<First, Rest> || ...) || has_duplicate_types_v<Rest...>;
 
     template <typename T, typename... Args>
-    requires((is_compatible_component_v<Args> && ...) && !has_duplicate_types_v<Args...> && std::is_integral_v<T> && (sizeof...(Args) > 0))
+    requires((is_compatible_component_v<Args> && ...) && !has_duplicate_types_v<Args...> &&
+             std::is_integral_v<T> && (sizeof...(Args) > 0))
     class ecs_descriptor
     {
     public:

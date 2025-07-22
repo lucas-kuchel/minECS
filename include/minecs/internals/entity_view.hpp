@@ -23,7 +23,11 @@ namespace minecs
             {
                 entity entity = m_entities->get_dense()[m_index];
 
-                return std::tuple<struct entity, Args&...>(entity, m_ecs->template get_sparse_set<Args>().get_dense()[m_ecs->template get_sparse_set<Args>().get_sparse()[entity.id]]...);
+                return std::tuple<struct entity, Args&...>(
+                    entity,
+                    m_ecs->template get_sparse_set<Args>()
+                        .get_dense()[m_ecs->template get_sparse_set<Args>()
+                                         .get_sparse()[entity.id]]...);
             }
 
             bool operator!=(const entity_view::iterator&) const
