@@ -9,7 +9,7 @@ target_include_directories(minECS INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
-target_compile_features(minECS INTERFACE cxx_std_17)
+target_compile_features(minECS INTERFACE cxx_std_20)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)

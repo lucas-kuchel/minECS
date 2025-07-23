@@ -16,7 +16,7 @@ minECS provides a simple yet powerful ECS foundation suitable for games, simulat
 
 ## Requirements
 
-- A C++17 (or later) compliant compiler and standard library
+- A C++20 (or later) compliant compiler and standard library
 
 - No external dependencies or build steps required—just include the headers
 

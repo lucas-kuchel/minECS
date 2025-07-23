@@ -7,16 +7,16 @@
 
 namespace minecs
 {
-    template <typename T, typename U, std::size_t N>
-    requires std::is_arithmetic_v<U>
+    template <typename T, typename S, std::size_t N>
+    requires std::is_unsigned_v<S> && (N > 0)
     class bitset_tree
     {
     public:
         using type = T;
-        using size_type = U;
+        using size_type = S;
 
         static constexpr auto size = N;
-        static constexpr size_type block_size = 1024;
+        static constexpr size_type block_size = 256;
 
         static constexpr size_type rounded_size = (N + 7) / 8 * 8;
         static constexpr size_type num_levels = rounded_size / 8;
@@ -89,7 +89,7 @@ namespace minecs
 
             for (size_type level = 0; level < num_levels; level++)
             {
-                unsigned char key = get_byte(bitset, level);
+                std::uint8_t key = get_byte(bitset, level);
 
                 node*& next = current->children[key];
                 if (!next)
@@ -116,7 +116,7 @@ namespace minecs
 
             for (size_type level = 0; level < num_levels; level++)
             {
-                unsigned char key = get_byte(bitset, level);
+                std::uint8_t key = get_byte(bitset, level);
 
                 node*& next = current->children[key];
 
@@ -142,7 +142,7 @@ namespace minecs
 
             for (size_type level = 0; level < num_levels; level++)
             {
-                unsigned char key = get_byte(bitset, level);
+                std::uint8_t key = get_byte(bitset, level);
 
                 node*& next = current->children[key];
 
@@ -355,17 +355,4 @@ namespace minecs
 
         std::vector<std::pair<std::bitset<size>, type>> m_contiguous;
     };
-
-    template <typename>
-    struct is_bitset_tree : std::false_type
-    {
-    };
-
-    template <typename T, typename U, std::size_t N>
-    struct is_bitset_tree<bitset_tree<T, U, N>> : std::true_type
-    {
-    };
-
-    template <typename T>
-    inline constexpr bool is_bitset_tree_v = is_bitset_tree<T>::value;
 }

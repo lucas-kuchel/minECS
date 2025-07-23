@@ -7,7 +7,7 @@
 namespace minecs
 {
     template <typename T, typename U>
-    requires std::is_integral_v<U>
+    requires std::is_unsigned_v<U>
     class sparse_set
     {
     public:
@@ -28,6 +28,8 @@ namespace minecs
 
         inline sparse_set(sparse_set&&) noexcept = default;
         inline sparse_set& operator=(sparse_set&&) noexcept = default;
+
+        static constexpr size_type dead_index = std::numeric_limits<size_type>::max();
 
         [[nodiscard]] inline bool insert(size_type index, const T& element)
         {
@@ -195,24 +197,9 @@ namespace minecs
         }
 
     private:
-        static constexpr size_type dead_index = std::numeric_limits<size_type>::max();
-
         dense_type m_dense;
         sparse_type m_sparse;
 
         std::vector<size_type> m_dense_to_index;
     };
-
-    template <typename>
-    struct is_sparse_set : std::false_type
-    {
-    };
-
-    template <typename T, typename U>
-    struct is_sparse_set<sparse_set<T, U>> : std::true_type
-    {
-    };
-
-    template <typename T>
-    inline constexpr bool is_sparse_set_v = is_sparse_set<T>::value;
 }
