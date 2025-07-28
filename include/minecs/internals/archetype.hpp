@@ -1,8 +1,8 @@
 #pragma once
 
+#include <minecs/internals/descriptor.hpp>
 #include <minecs/internals/entity.hpp>
 #include <minecs/internals/sparse_set.hpp>
-#include <minecs/internals/ecs_descriptor.hpp>
 
 namespace minecs
 {

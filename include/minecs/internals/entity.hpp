@@ -11,25 +11,29 @@ namespace minecs
     public:
         using size_type = T;
 
-        entity(size_type id = 0, size_type generation = 0) 
-            : m_id(id), m_generation(generation) 
+        entity(size_type id = 0, size_type generation = 0)
+            : m_id(id), m_generation(generation)
         {
-
         }
 
-        [[nodiscard]] size_type id() const 
-        { 
-            return m_id; 
+        [[nodiscard]] size_type& get_id()
+        {
+            return m_id;
         }
 
-        [[nodiscard]] size_type generation() const 
-        { 
-            return m_generation; 
+        [[nodiscard]] const size_type& get_id() const
+        {
+            return m_id;
         }
 
-        void increment_generation()
-        { 
-            ++m_generation; 
+        [[nodiscard]] size_type& get_generation()
+        {
+            return m_generation;
+        }
+
+        [[nodiscard]] const size_type& get_generation() const
+        {
+            return m_generation;
         }
 
         bool operator==(const entity& other) const

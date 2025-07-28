@@ -1,13 +1,13 @@
 #pragma once
 
 #include <minecs/internals/entity.hpp>
-#include <minecs/internals/traits.hpp>
 #include <minecs/internals/sparse_set.hpp>
+#include <minecs/internals/traits.hpp>
 
 namespace minecs
 {
     template <typename T, typename U, typename... Args>
-    requires std::is_unsigned_v<U> && (sizeof...(Args) > 0) && is_ecs_v<ecs_descriptor<T, Args...>>
+    requires is_ecs_v<T> && std::is_unsigned_v<U> && (sizeof...(Args) > 0)
     class entity_view
     {
     public:
@@ -29,7 +29,7 @@ namespace minecs
                     target_entity,
                     m_ecs->template get_sparse_set<Args>()
                         .get_dense()[m_ecs->template get_sparse_set<Args>()
-                                         .get_sparse()[target_entity.id]]...);
+                                         .get_sparse()[target_entity.get_id()]]...);
             }
 
             bool operator!=(const entity_view::iterator&) const

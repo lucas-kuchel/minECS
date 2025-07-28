@@ -2,10 +2,10 @@
 
 #include <minecs/internals/archetype.hpp>
 #include <minecs/internals/bitset_tree.hpp>
-#include <minecs/internals/ecs_descriptor.hpp>
-#include <minecs/internals/traits.hpp>
+#include <minecs/internals/descriptor.hpp>
 #include <minecs/internals/entity_view.hpp>
 #include <minecs/internals/sparse_set.hpp>
+#include <minecs/internals/traits.hpp>
 
 #include <bitset>
 #include <tuple>
@@ -14,18 +14,18 @@
 namespace minecs
 {
     template <typename T>
-    requires is_ecs_descriptor_v<T>
+    requires is_descriptor_v<T>
     class ecs;
 
     template <typename T, typename... Args>
-    requires is_ecs_descriptor_v<ecs_descriptor<T, Args...>>
-    class ecs<ecs_descriptor<T, Args...>>
+    requires is_descriptor_v<descriptor<T, Args...>>
+    class ecs<descriptor<T, Args...>>
     {
     public:
         using bitset = std::bitset<sizeof...(Args)>;
 
         using size_type = T;
-        using descriptor = ecs_descriptor<T, Args...>;
+        using descriptor = descriptor<T, Args...>;
 
         ecs() = default;
         ~ecs() = default;
@@ -40,7 +40,7 @@ namespace minecs
         {
             if (m_free_list.empty())
             {
-                m_entities.push_back({static_cast<std::uint32_t>(m_entities.size()), 0});
+                m_entities.push_back({static_cast<size_type>(m_entities.size()), 0});
                 m_entity_masks.push_back(bitset{});
 
                 return m_entities.back();
@@ -50,7 +50,7 @@ namespace minecs
                 std::uint32_t index = m_free_list.back();
 
                 m_free_list.pop_back();
-                m_entities[index].generation++;
+                m_entities[index].get_generation()++;
 
                 m_entity_masks[index].reset();
 
@@ -61,7 +61,7 @@ namespace minecs
         [[nodiscard]] inline std::vector<entity<T>> create_blank_entities(std::size_t count)
         {
             std::vector<entity<T>> entities;
-            
+
             entities.reserve(count);
 
             for (std::size_t i = 0; i < count; i++)
@@ -78,13 +78,13 @@ namespace minecs
         {
             entity<T> e = create_blank_entity();
 
-            constexpr auto mask = make_bitmask<Args2...>();
+            auto mask = make_bitmask<Args2...>();
 
-            m_entity_masks[e.id] = mask;
+            m_entity_masks[e.get_id()] = mask;
 
-            m_archetypes.get_or_insert(mask).insert(e.id, e);
+            m_archetypes.get_or_insert(mask).insert(e.get_id(), e);
 
-            (std::get<sparse_set<Args2, size_type>>(m_sparse_sets).insert(e.id, std::forward<Args2>(components)), ...);
+            (std::get<sparse_set<Args2, size_type>>(m_sparse_sets).insert(e.get_id(), std::forward<Args2>(components)), ...);
 
             return e;
         }
@@ -109,13 +109,13 @@ namespace minecs
         {
             if (has_entity(entity))
             {
-                const bitset& bitset = m_entity_masks[entity.id];
+                const bitset& bitset = m_entity_masks[entity.get_id()];
 
                 remove_entity_from_sparse_sets(entity, bitset);
 
                 if (archetype<size_type>* archetype = m_archetypes.get(bitset))
                 {
-                    if (!archetype->remove(entity.id))
+                    if (!archetype->remove(entity.get_id()))
                     {
                         return false;
                     }
@@ -126,9 +126,9 @@ namespace minecs
                     }
                 }
 
-                m_free_list.push_back(entity.id);
-                m_entities[entity.id] = {std::numeric_limits<size_type>::max(), entity.generation};
-                m_entity_masks[entity.id].reset();
+                m_free_list.push_back(entity.get_id());
+                m_entities[entity.get_id()] = {std::numeric_limits<size_type>::max(), entity.get_generation()};
+                m_entity_masks[entity.get_id()].reset();
             }
             else
             {
@@ -153,9 +153,9 @@ namespace minecs
 
         [[nodiscard]] inline bool has_entity(entity<T> entity) const
         {
-            return entity.id < m_entities.size() &&
-                   m_entities[entity.id].generation == entity.generation &&
-                   m_entities[entity.id].id != std::numeric_limits<size_type>::max();
+            return entity.get_id() < m_entities.size() &&
+                   m_entities[entity.get_id()].get_generation() == entity.get_generation() &&
+                   m_entities[entity.get_id()].get_id() != std::numeric_limits<size_type>::max();
         }
 
         [[nodiscard]] inline bool has_entities(const std::vector<entity<T>>& entities) const
@@ -179,7 +179,7 @@ namespace minecs
             {
                 constexpr std::size_t index = descriptor::template index<U>();
 
-                return m_entity_masks[entity.id].test(index);
+                return m_entity_masks[entity.get_id()].test(index);
             }
 
             return false;
@@ -230,15 +230,15 @@ namespace minecs
             {
                 auto& set = std::get<sparse_set<U, T>>(m_sparse_sets);
 
-                if (!set.insert(entity.id, std::forward<U>(component)))
+                if (!set.insert(entity.get_id(), std::forward<U>(component)))
                 {
                     return false;
                 }
 
                 constexpr std::size_t index = descriptor::template index<U>();
 
-                bitset& target_bitset = m_entity_masks[entity.id];
-                bitset old_bitset = m_entity_masks[entity.id];
+                bitset& target_bitset = m_entity_masks[entity.get_id()];
+                bitset old_bitset = m_entity_masks[entity.get_id()];
 
                 target_bitset.set(index);
 
@@ -272,15 +272,15 @@ namespace minecs
             {
                 auto& set = std::get<sparse_set<U, T>>(m_sparse_sets);
 
-                if (!set.insert(entity.id, U(std::forward<Args2>(args)...)))
+                if (!set.insert(entity.get_id(), U(std::forward<Args2>(args)...)))
                 {
                     return false;
                 }
 
                 constexpr std::size_t index = descriptor::template index<U>();
 
-                bitset& target_bitset = m_entity_masks[entity.id];
-                bitset old_bitset = m_entity_masks[entity.id];
+                bitset& target_bitset = m_entity_masks[entity.get_id()];
+                bitset old_bitset = m_entity_masks[entity.get_id()];
 
                 target_bitset.set(index);
 
@@ -335,15 +335,15 @@ namespace minecs
             {
                 auto& set = std::get<sparse_set<U, T>>(m_sparse_sets);
 
-                if (!set.remove(entity.id))
+                if (!set.remove(entity.get_id()))
                 {
                     return false;
                 }
 
                 constexpr std::size_t index = descriptor::template index<U>();
 
-                bitset& target_bitset = m_entity_masks[entity.id];
-                bitset old_bitset = m_entity_masks[entity.id];
+                bitset& target_bitset = m_entity_masks[entity.get_id()];
+                bitset old_bitset = m_entity_masks[entity.get_id()];
 
                 target_bitset.reset(index);
 
@@ -459,7 +459,7 @@ namespace minecs
 
             if (archetype<size_type>* old_archetype = m_archetypes.get(old_bitset))
             {
-                if (!old_archetype->remove(entity.id))
+                if (!old_archetype->remove(entity.get_id()))
                 {
                     return false;
                 }
@@ -470,7 +470,7 @@ namespace minecs
                 }
             }
 
-            if (!m_archetypes.get_or_insert(new_bitset).insert(entity.id, entity))
+            if (!m_archetypes.get_or_insert(new_bitset).insert(entity.get_id(), entity))
             {
                 return false;
             }
@@ -481,7 +481,7 @@ namespace minecs
         template <std::size_t... Ns>
         inline void remove_entity_from_sparse_sets_impl(entity<T> entity, const bitset& mask, std::index_sequence<Ns...>)
         {
-            ((mask.test(Ns) ? std::get<Ns>(m_sparse_sets).remove(entity.id) : void()), ...);
+            ((mask.test(Ns) ? std::get<Ns>(m_sparse_sets).remove(entity.get_id()) : void()), ...);
         }
 
         inline void remove_entity_from_sparse_sets(entity<T> entity, const bitset& mask)

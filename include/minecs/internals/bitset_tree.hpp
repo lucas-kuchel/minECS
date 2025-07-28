@@ -83,7 +83,7 @@ namespace minecs
             remove_recursive(m_root, bitset, 0);
         }
 
-        [[nodiscard]] type& get_or_insert(const std::bitset<size>& bitset)
+        type& get_or_insert(const std::bitset<size>& bitset)
         {
             node* current = m_root;
 

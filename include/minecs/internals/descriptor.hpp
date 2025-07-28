@@ -9,15 +9,15 @@
 namespace minecs
 {
     template <typename T, typename... Args>
-    requires((is_compatible_component_v<Args> && ...) && 
-            !has_duplicate_types_v<Args...> &&
+    requires((is_compatible_component_v<Args> && ...) &&
+             !has_duplicate_types_v<Args...> &&
              std::is_unsigned_v<T> && (sizeof...(Args) > 0))
-    class ecs_descriptor
+    class descriptor
     {
     public:
         using size_type = T;
 
-        ecs_descriptor() = delete;
+        descriptor() = delete;
 
         template <typename U>
         static constexpr bool contains = (std::is_same_v<U, Args> || ...);

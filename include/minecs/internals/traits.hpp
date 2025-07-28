@@ -21,43 +21,43 @@ namespace minecs
     inline constexpr bool has_duplicate_types_v<First, Rest...> = (std::is_same_v<First, Rest> || ...) || has_duplicate_types_v<Rest...>;
 
     template <typename T, typename... Args>
-    requires((is_compatible_component_v<Args> && ...) && 
-            !has_duplicate_types_v<Args...> &&
+    requires((is_compatible_component_v<Args> && ...) &&
+             !has_duplicate_types_v<Args...> &&
              std::is_unsigned_v<T> && (sizeof...(Args) > 0))
-    class ecs_descriptor;
+    class descriptor;
 
     template <typename>
-    struct is_ecs_descriptor : std::false_type
+    struct is_descriptor : std::false_type
     {
     };
 
     template <typename T, typename... Args>
-    struct is_ecs_descriptor<ecs_descriptor<T, Args...>> : std::true_type
+    struct is_descriptor<descriptor<T, Args...>> : std::true_type
     {
     };
 
     template <typename T>
-    inline constexpr bool is_ecs_descriptor_v = is_ecs_descriptor<T>::value;
+    inline constexpr bool is_descriptor_v = is_descriptor<T>::value;
 
     template <typename T>
-    requires is_ecs_descriptor_v<T>
+    requires is_descriptor_v<T>
     class ecs;
 
     template <typename T, typename... Args>
-    requires is_ecs_descriptor_v<ecs_descriptor<T, Args...>>
-    class ecs<ecs_descriptor<T, Args...>>;
+    requires is_descriptor_v<descriptor<T, Args...>>
+    class ecs<descriptor<T, Args...>>;
 
-    template<typename>
+    template <typename>
     struct is_ecs : std::false_type
     {
     };
 
-    template<typename T, typename... Args>
-    struct is_ecs<ecs<ecs_descriptor<T, Args...>>> : std::true_type
+    template <typename T, typename... Args>
+    struct is_ecs<ecs<descriptor<T, Args...>>> : std::true_type
     {
     };
 
-    template<typename T>
+    template <typename T>
     inline constexpr bool is_ecs_v = is_ecs<T>::value;
 
     template <typename T, typename U, std::size_t N>
