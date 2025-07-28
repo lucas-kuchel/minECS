@@ -1,13 +1,13 @@
 #pragma once
 
-#include <minecs/internals/entity.hpp>
-#include <minecs/internals/sparse_set.hpp>
-#include <minecs/internals/traits.hpp>
+#include <minECS/Internals/Entity.hpp>
+#include <minECS/Internals/SparseSet.hpp>
+#include <minECS/Internals/Traits.hpp>
 
-namespace minecs
+namespace minECS
 {
-    template <typename T, typename U, typename... Args>
-    requires is_ecs_v<T> && std::is_unsigned_v<U> && (sizeof...(Args) > 0)
+    template <typename TECS, typename TSizeType, typename... TComponents>
+    requires IsECS<TECS> && IsSizeType<TSizeType> && ComponentsAreUnique<TComponents...> && (TECS::Descriptor::template Contains <)
     class entity_view
     {
     public:

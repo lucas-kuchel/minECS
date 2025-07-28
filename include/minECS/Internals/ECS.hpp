@@ -1,31 +1,31 @@
 #pragma once
 
-#include <minecs/internals/archetype.hpp>
-#include <minecs/internals/bitset_tree.hpp>
-#include <minecs/internals/descriptor.hpp>
-#include <minecs/internals/entity_view.hpp>
-#include <minecs/internals/sparse_set.hpp>
-#include <minecs/internals/traits.hpp>
+#include <minECS/Internals/Archetype.hpp>
+#include <minECS/Internals/BitsetTree.hpp>
+#include <minECS/Internals/ECSDescriptor.hpp>
+#include <minECS/Internals/EntityView.hpp>
+#include <minECS/Internals/SparseSet.hpp>
+#include <minECS/Internals/Traits.hpp>
 
 #include <bitset>
 #include <tuple>
 #include <vector>
 
-namespace minecs
+namespace minECS
 {
     template <typename T>
-    requires is_descriptor_v<T>
+    requires IsDescriptor<T>
     class ecs;
 
     template <typename T, typename... Args>
-    requires is_descriptor_v<descriptor<T, Args...>>
+    requires IsDescriptor<descriptor<T, Args...>>
     class ecs<descriptor<T, Args...>>
     {
     public:
         using bitset = std::bitset<sizeof...(Args)>;
 
         using size_type = T;
-        using descriptor = descriptor<T, Args...>;
+        using Descriptor = ECSDescriptor<T, Args...>;
 
         ecs() = default;
         ~ecs() = default;
@@ -73,7 +73,7 @@ namespace minecs
         }
 
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         inline entity<T> create_entity(Args2&&... components)
         {
             entity<T> e = create_blank_entity();
@@ -90,7 +90,7 @@ namespace minecs
         }
 
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         inline std::vector<entity<T>> create_entities(std::size_t count, Args2&&... components)
         {
             std::vector<entity<T>> entities;
@@ -186,7 +186,7 @@ namespace minecs
         }
 
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         [[nodiscard]] inline bool entity_has_components(entity<T> entity) const
         {
             return (entity_has_component<Args2>(entity) && ...);
@@ -208,7 +208,7 @@ namespace minecs
         }
 
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         [[nodiscard]] inline bool entities_have_components(const std::vector<entity<T>>& entities) const
         {
             for (const auto& entity : entities)
@@ -264,57 +264,15 @@ namespace minecs
             return result;
         }
 
-        template <typename U, typename... Args2>
-        requires((sizeof...(Args2) > 0) && descriptor::template contains<U>)
-        [[nodiscard]] inline bool add_component_to_entity(entity<T> entity, Args2&&... args)
-        {
-            if (has_entity(entity))
-            {
-                auto& set = std::get<sparse_set<U, T>>(m_sparse_sets);
-
-                if (!set.insert(entity.get_id(), U(std::forward<Args2>(args)...)))
-                {
-                    return false;
-                }
-
-                constexpr std::size_t index = descriptor::template index<U>();
-
-                bitset& target_bitset = m_entity_masks[entity.get_id()];
-                bitset old_bitset = m_entity_masks[entity.get_id()];
-
-                target_bitset.set(index);
-
-                return update_archetype(entity, old_bitset, target_bitset);
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        template <typename U, typename... Args2>
-        requires((sizeof...(Args2) > 0) && descriptor::template contains<U>)
-        [[nodiscard]] inline bool add_component_to_entities(const std::vector<entity<T>>& entities, Args2&&... args)
-        {
-            bool result = true;
-
-            for (auto& entity : entities)
-            {
-                result &= add_component_to_entity<U>(entity, std::forward<Args2>(args)...);
-            }
-
-            return result;
-        }
-
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         [[nodiscard]] inline bool add_components_to_entity(entity<T> entity, const Args2&... components)
         {
             return (add_component_to_entity<Args2>(entity, components) && ...);
         }
 
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         [[nodiscard]] inline bool add_components_to_entities(const std::vector<entity<T>>& entities, const Args2&... components)
         {
             bool result = true;
@@ -370,14 +328,14 @@ namespace minecs
         }
 
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         [[nodiscard]] inline bool remove_components_from_entity(entity<T> entity)
         {
             return (remove_component_from_entity<Args2>(entity) && ...);
         }
 
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         [[nodiscard]] inline bool remove_components_from_entities(const std::vector<entity<T>>& entities)
         {
             bool result = true;
@@ -425,7 +383,7 @@ namespace minecs
         }
 
         template <typename... Args2>
-        requires(descriptor::template contains<Args2> && ...)
+        requires((descriptor::template contains<Args2> && ...) && sizeof...(Args2) != 0)
         [[nodiscard]] static inline constexpr bitset make_bitmask()
         {
             bitset bitset;

@@ -8,7 +8,7 @@
         {
             "name": "default",
             "displayName": "Default install",
-            "description": "Installs minecs to the system",
+            "description": "Installs minECS to the system",
             "hidden": false,
             "cacheVariables": {
                 "CMAKE_CXX_STANDARD": "20",

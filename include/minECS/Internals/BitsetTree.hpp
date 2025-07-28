@@ -5,15 +5,15 @@
 #include <optional>
 #include <vector>
 
-namespace minecs
+namespace minECS
 {
-    template <typename T, typename S, std::size_t N>
-    requires std::is_unsigned_v<S> && (N > 0)
+    template <typename Type, typename SizeType, std::size_t N>
+    requires std::is_unsigned_v<SizeType> && (N > 0)
     class bitset_tree
     {
     public:
-        using type = T;
-        using size_type = S;
+        using type = Type;
+        using size_type = SizeType;
 
         static constexpr auto size = N;
         static constexpr size_type block_size = 256;
