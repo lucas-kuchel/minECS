@@ -1,6 +1,9 @@
 # CMake config dir
 build/
 
+# VSCode extension pain
+out/
+
 # Cache dir for some tools
 .cache/
 
