@@ -161,7 +161,7 @@ namespace minECS
 
         [[nodiscard]] inline ConstIterator begin() const noexcept
         {
-            return Dense.cbegin();
+            return Dense.begin();
         }
 
         [[nodiscard]] inline Iterator end() noexcept
@@ -170,6 +170,16 @@ namespace minECS
         }
 
         [[nodiscard]] inline ConstIterator end() const noexcept
+        {
+            return Dense.end();
+        }
+
+        [[nodiscard]] inline ConstIterator cbegin() noexcept
+        {
+            return Dense.cbegin();
+        }
+
+        [[nodiscard]] inline ConstIterator cend() const noexcept
         {
             return Dense.cend();
         }

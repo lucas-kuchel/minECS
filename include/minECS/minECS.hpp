@@ -1,3 +1,3 @@
 #pragma once
 
-#include <minECS/internals/ecs.hpp>
+#include <minECS/Internals/ECS.hpp>

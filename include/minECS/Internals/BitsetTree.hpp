@@ -1,5 +1,7 @@
 #pragma once
 
+#include <minECS/Internals/Traits.hpp>
+
 #include <bitset>
 #include <cstdint>
 #include <optional>
@@ -7,118 +9,118 @@
 
 namespace minECS
 {
-    template <typename Type, typename SizeType, std::size_t N>
-    requires std::is_unsigned_v<SizeType> && (N > 0)
-    class bitset_tree
+    template <typename T, typename TSizeType, TSizeType NBitsetSize>
+    requires IsSizeType<TSizeType> && (NBitsetSize != 0)
+    class BitsetTree
     {
     public:
-        using type = Type;
-        using size_type = SizeType;
+        using Type = T;
+        using SizeType = TSizeType;
 
-        static constexpr auto size = N;
-        static constexpr size_type block_size = 256;
+        static constexpr SizeType BitsetSize = NBitsetSize;
+        static constexpr SizeType BlockSize = 256;
 
-        static constexpr size_type rounded_size = (N + 7) / 8 * 8;
-        static constexpr size_type num_levels = rounded_size / 8;
+        static constexpr SizeType RoundedSize = (BitsetSize + 7) / 8 * 8;
+        static constexpr SizeType LevelCount = RoundedSize / 8;
 
-        using iterator = std::vector<std::pair<std::bitset<size>, type>>::iterator;
-        using const_iterator = std::vector<std::pair<std::bitset<size>, type>>::const_iterator;
+        using iterator = std::vector<std::pair<std::bitset<BitsetSize>, Type>>::iterator;
+        using const_iterator = std::vector<std::pair<std::bitset<BitsetSize>, Type>>::const_iterator;
 
-        bitset_tree()
+        BitsetTree()
         {
-            m_root = m_pool.allocate();
-            *m_root = {};
+            Root = Pool.Allocate();
+            *Root = {};
         }
 
-        ~bitset_tree() = default;
+        ~BitsetTree() = default;
 
-        bitset_tree(const bitset_tree& other)
-            : m_contiguous(other.m_contiguous)
+        BitsetTree(const BitsetTree& other)
+            : Contiguous(other.Contiguous)
         {
-            m_root = clone_subtree(other.m_root, m_pool);
+            Root = CloneSubtree(other.Root, Pool);
         }
 
-        bitset_tree(bitset_tree&& other) noexcept
-            : m_root(other.m_root), m_pool(std::move(other.m_pool)), m_contiguous(std::move(other.m_contiguous))
+        BitsetTree(BitsetTree&& other) noexcept
+            : Root(other.Root), Pool(std::move(other.Pool)), Contiguous(std::move(other.Contiguous))
         {
-            other.m_root = nullptr;
+            other.Root = nullptr;
         }
 
-        bitset_tree& operator=(const bitset_tree& other)
+        BitsetTree& operator=(const BitsetTree& other)
         {
             if (this == &other)
             {
                 return *this;
             }
 
-            bitset_tree temp(other);
+            BitsetTree temp(other);
 
-            std::swap(m_root, temp.m_root);
-            std::swap(m_pool, temp.m_pool);
-            std::swap(m_contiguous, temp.m_contiguous);
+            std::swap(Root, temp.Root);
+            std::swap(Pool, temp.Pool);
+            std::swap(Contiguous, temp.Contiguous);
 
             return *this;
         }
 
-        bitset_tree& operator=(bitset_tree&& other) noexcept
+        BitsetTree& operator=(BitsetTree&& other) noexcept
         {
             if (this == &other)
             {
                 return *this;
             }
 
-            clear_tree(m_root);
+            ClearTree(Root);
 
-            m_root = other.m_root;
-            m_pool = std::move(other.m_pool);
-            m_contiguous = std::move(other.m_contiguous);
+            Root = other.Root;
+            Pool = std::move(other.Pool);
+            Contiguous = std::move(other.Contiguous);
 
-            other.m_root = nullptr;
+            other.Root = nullptr;
 
             return *this;
         }
 
-        inline void remove(const std::bitset<size>& bitset)
+        inline void Remove(const std::bitset<BitsetSize>& bitset)
         {
-            remove_recursive(m_root, bitset, 0);
+            RemoveRecursive(Root, bitset, 0);
         }
 
-        type& get_or_insert(const std::bitset<size>& bitset)
+        Type& GetOrInsert(const std::bitset<BitsetSize>& bitset)
         {
-            node* current = m_root;
+            Node* current = Root;
 
-            for (size_type level = 0; level < num_levels; level++)
+            for (SizeType level = 0; level < LevelCount; level++)
             {
-                std::uint8_t key = get_byte(bitset, level);
+                std::uint8_t key = GetByte(bitset, level);
 
-                node*& next = current->children[key];
+                Node*& next = current->Children[key];
                 if (!next)
                 {
-                    next = m_pool.allocate();
+                    next = Pool.Allocate();
                     *next = {};
                 }
 
                 current = next;
             }
 
-            if (!current->archetype_index.has_value())
+            if (!current->ArchetypeIndex.has_value())
             {
-                current->archetype_index = m_contiguous.size();
-                m_contiguous.emplace_back(bitset, T{});
+                current->ArchetypeIndex = Contiguous.size();
+                Contiguous.emplace_back(bitset, T{});
             }
 
-            return m_contiguous[current->archetype_index.value()].second;
+            return Contiguous[current->ArchetypeIndex.value()].second;
         }
 
-        [[nodiscard]] type* get(const std::bitset<size>& bitset)
+        [[nodiscard]] Type* Get(const std::bitset<BitsetSize>& bitset)
         {
-            node* current = m_root;
+            Node* current = Root;
 
-            for (size_type level = 0; level < num_levels; level++)
+            for (SizeType level = 0; level < LevelCount; level++)
             {
-                std::uint8_t key = get_byte(bitset, level);
+                std::uint8_t key = GetByte(bitset, level);
 
-                node*& next = current->children[key];
+                Node*& next = current->Children[key];
 
                 if (!next)
                 {
@@ -128,23 +130,23 @@ namespace minECS
                 current = next;
             }
 
-            if (!current->archetype_index.has_value())
+            if (!current->ArchetypeIndex.has_value())
             {
                 return nullptr;
             }
 
-            return &m_contiguous[current->archetype_index.value()].second;
+            return &Contiguous[current->ArchetypeIndex.value()].second;
         }
 
-        [[nodiscard]] const type* get(const std::bitset<size>& bitset) const
+        [[nodiscard]] const Type* Get(const std::bitset<BitsetSize>& bitset) const
         {
-            node* current = m_root;
+            Node* current = Root;
 
-            for (size_type level = 0; level < num_levels; level++)
+            for (SizeType level = 0; level < LevelCount; level++)
             {
-                std::uint8_t key = get_byte(bitset, level);
+                std::uint8_t key = GetByte(bitset, level);
 
-                node*& next = current->children[key];
+                Node*& next = current->Children[key];
 
                 if (!next)
                 {
@@ -154,134 +156,134 @@ namespace minECS
                 current = next;
             }
 
-            if (!current->archetype_index.has_value())
+            if (!current->ArchetypeIndex.has_value())
             {
                 return nullptr;
             }
 
-            return &m_contiguous[current->archetype_index.value()].second;
+            return &Contiguous[current->ArchetypeIndex.value()].second;
         }
 
         [[nodiscard]] iterator begin()
         {
-            return m_contiguous.begin();
+            return Contiguous.begin();
         }
 
         [[nodiscard]] iterator end()
         {
-            return m_contiguous.end();
+            return Contiguous.end();
         }
 
         [[nodiscard]] const_iterator begin() const
         {
-            return m_contiguous.begin();
+            return Contiguous.begin();
         }
 
         [[nodiscard]] const_iterator end() const
         {
-            return m_contiguous.end();
+            return Contiguous.end();
         }
 
     private:
-        struct node
+        struct Node
         {
-            std::array<node*, 256> children{};
-            std::optional<size_type> archetype_index;
+            std::array<Node*, 256> Children{};
+            std::optional<SizeType> ArchetypeIndex;
         };
 
-        class node_pool
+        class NodePool
         {
         public:
-            node_pool()
-                : m_index(block_size)
+            NodePool()
+                : Index(BlockSize)
             {
             }
 
-            ~node_pool()
+            ~NodePool()
             {
-                for (auto* block : m_blocks)
+                for (auto* block : Blocks)
                 {
                     delete[] block;
                 }
             }
 
-            node_pool(const node_pool&) = default;
-            node_pool(node_pool&&) noexcept = default;
+            NodePool(const NodePool&) = default;
+            NodePool(NodePool&&) noexcept = default;
 
-            node_pool& operator=(const node_pool&) = default;
-            node_pool& operator=(node_pool&&) noexcept = default;
+            NodePool& operator=(const NodePool&) = default;
+            NodePool& operator=(NodePool&&) noexcept = default;
 
-            [[nodiscard]] node* allocate()
+            [[nodiscard]] Node* Allocate()
             {
-                if (!m_free_list.empty())
+                if (!FreeList.empty())
                 {
-                    node* node = m_free_list.back();
+                    Node* node = FreeList.back();
 
-                    m_free_list.pop_back();
+                    FreeList.pop_back();
 
                     return node;
                 }
 
-                if (m_index >= block_size)
+                if (Index >= BlockSize)
                 {
-                    allocate_block();
+                    AllocateBlock();
                 }
 
-                return &m_blocks.back()[m_index++];
+                return &Blocks.back()[Index++];
             }
 
-            void deallocate(node* ptr)
+            void Deallocate(Node* ptr)
             {
-                m_free_list.push_back(ptr);
+                FreeList.push_back(ptr);
             }
 
         private:
-            void allocate_block()
+            void AllocateBlock()
             {
-                m_blocks.push_back(new node[block_size]);
+                Blocks.push_back(new Node[BlockSize]);
 
-                m_index = 0;
+                Index = 0;
             }
 
-            std::vector<node*> m_blocks;
-            std::vector<node*> m_free_list;
+            std::vector<Node*> Blocks;
+            std::vector<Node*> FreeList;
 
-            size_type m_index;
+            SizeType Index;
         };
 
-        void clear_tree(node*& current)
+        void ClearTree(Node*& current)
         {
             if (!current)
             {
                 return;
             }
 
-            for (auto*& child : current->children)
+            for (auto*& child : current->Children)
             {
                 if (child)
                 {
-                    clear_tree(child);
+                    ClearTree(child);
 
-                    m_pool.deallocate(child);
+                    Pool.Deallocate(child);
 
                     child = nullptr;
                 }
             }
 
-            m_pool.deallocate(current);
+            Pool.Deallocate(current);
 
             current = nullptr;
         }
 
-        [[nodiscard]] static std::uint8_t get_byte(const std::bitset<size>& bs, size_type byte_index)
+        [[nodiscard]] static std::uint8_t GetByte(const std::bitset<BitsetSize>& bs, SizeType byteIndex)
         {
             std::uint8_t result = 0;
 
-            for (size_type i = 0; i < 8; i++)
+            for (SizeType i = 0; i < 8; i++)
             {
-                size_type bit_index = byte_index * 8 + i;
+                SizeType bitIndex = byteIndex * 8 + i;
 
-                if (bit_index < size && bs[bit_index])
+                if (bitIndex < BitsetSize && bs[bitIndex])
                 {
                     result |= (1 << i);
                 }
@@ -290,35 +292,35 @@ namespace minECS
             return result;
         }
 
-        bool remove_recursive(node*& current, const std::bitset<size>& bitset, size_type level)
+        bool RemoveRecursive(Node*& current, const std::bitset<BitsetSize>& bitset, SizeType level)
         {
             if (!current)
             {
                 return false;
             }
 
-            if (level == num_levels)
+            if (level == LevelCount)
             {
-                current->archetype_index.reset();
+                current->ArchetypeIndex.reset();
             }
             else
             {
-                std::uint8_t key = get_byte(bitset, level);
-                node*& next = current->children[key];
+                std::uint8_t key = GetByte(bitset, level);
+                Node*& next = current->Children[key];
 
-                if (remove_recursive(next, bitset, level + 1))
+                if (RemoveRecursive(next, bitset, level + 1))
                 {
-                    m_pool.deallocate(next);
+                    Pool.Deallocate(next);
                     next = nullptr;
                 }
             }
 
-            if (current->archetype_index.has_value())
+            if (current->ArchetypeIndex.has_value())
             {
                 return false;
             }
 
-            for (auto* child : current->children)
+            for (auto* child : current->Children)
             {
                 if (child)
                 {
@@ -329,30 +331,30 @@ namespace minECS
             return true;
         }
 
-        [[nodiscard]] node* clone_subtree(const node* source, node_pool& pool)
+        [[nodiscard]] Node* CloneSubtree(const Node* source, NodePool& pool)
         {
             if (!source)
             {
                 return nullptr;
             }
 
-            node* clone = pool.allocate();
-            clone->archetype_index = source->archetype_index;
+            Node* clone = pool.Allocate();
+            clone->ArchetypeIndex = source->ArchetypeIndex;
 
-            for (size_type i = 0; i < 256; i++)
+            for (SizeType i = 0; i < 256; i++)
             {
-                if (source->children[i])
+                if (source->Children[i])
                 {
-                    clone->children[i] = clone_subtree(source->children[i], pool);
+                    clone->Children[i] = CloneSubtree(source->Children[i], pool);
                 }
             }
 
             return clone;
         }
 
-        node* m_root;
-        node_pool m_pool;
+        Node* Root;
+        NodePool Pool;
 
-        std::vector<std::pair<std::bitset<size>, type>> m_contiguous;
+        std::vector<std::pair<std::bitset<BitsetSize>, Type>> Contiguous;
     };
 }

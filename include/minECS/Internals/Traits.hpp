@@ -27,21 +27,21 @@ namespace minECS
     inline constexpr bool ComponentsAreUnique<TComponent, TOthers...> = (!std::is_same_v<TComponent, TOthers> && ...) && ComponentsAreUnique<TOthers...>;
 
     template <typename TSizeType, typename... TComponents>
-    requires CanBeComponents<TComponents...> && IsSizeType<TSizeType> && ComponentsAreUnique<TComponents...>
-    class Descriptor;
+    requires ComponentsAreUnique<TComponents...> && CanBeComponents<TComponents...> && IsSizeType<TSizeType>
+    class ECSDescriptor;
 
     template <typename>
     inline constexpr bool IsDescriptor = false;
 
     template <typename TSizeType, typename... TComponents>
-    inline constexpr bool IsDescriptor<Descriptor<TSizeType, TComponents...>> = true;
+    inline constexpr bool IsDescriptor<ECSDescriptor<TSizeType, TComponents...>> = true;
 
     template <typename TDescriptor>
     requires IsDescriptor<TDescriptor>
     class ECS;
 
     template <typename TSizeType, typename... TComponents>
-    class ECS<Descriptor<TSizeType, TComponents...>>;
+    class ECS<ECSDescriptor<TSizeType, TComponents...>>;
 
     template <typename>
     inline constexpr bool IsECS = false;
@@ -51,7 +51,7 @@ namespace minECS
     inline constexpr bool IsECS<ECS<TDescriptor>> = true;
 
     template <typename T, typename TSizeType, TSizeType NBitsetSize>
-    requires IsSizeType<TSizeType> && (NBitsetSize > 0)
+    requires IsSizeType<TSizeType> && (NBitsetSize != 0)
     class BitsetTree;
 
     template <typename>

@@ -54,14 +54,24 @@ namespace minECS
             return Entities.end();
         }
 
-        [[nodiscard]] inline const Iterator begin() const
+        [[nodiscard]] inline ConstIterator begin() const
         {
             return Entities.begin();
         }
 
-        [[nodiscard]] inline const Iterator end() const
+        [[nodiscard]] inline ConstIterator end() const
         {
             return Entities.end();
+        }
+
+        [[nodiscard]] inline ConstIterator cbegin() const
+        {
+            return Entities.cbegin();
+        }
+
+        [[nodiscard]] inline ConstIterator cend() const
+        {
+            return Entities.cend();
         }
 
     private:

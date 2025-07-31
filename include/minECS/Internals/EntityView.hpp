@@ -7,84 +7,80 @@
 namespace minECS
 {
     template <typename TECS, typename TSizeType, typename... TComponents>
-    requires IsECS<TECS> && IsSizeType<TSizeType> && ComponentsAreUnique<TComponents...> && (TECS::Descriptor::template Contains <)
-    class entity_view
+    requires IsECS<TECS> && IsSizeType<TSizeType> && ComponentsAreUnique<TComponents...> && (TECS::Descriptor::template Contains<TComponents> && ...)
+    class EntityView
     {
     public:
-        using size_type = U;
+        using SizeType = TSizeType;
 
-        class iterator
+        class Iterator
         {
         public:
-            iterator(T* ecs, sparse_set<entity<U>, size_type>* entities, std::size_t index, std::size_t end)
-                : m_ecs(ecs), m_entities(entities), m_index(index), m_end(end)
+            Iterator(TECS* ecs, SparseSet<Entity<SizeType>, SizeType>* entities, SizeType index, SizeType end)
+                : ECS(ecs), Entities(entities), Index(index), End(end)
             {
             }
 
             auto operator*() const
             {
-                entity<U> target_entity = m_entities->get_dense()[m_index];
+                Entity<SizeType> targetEntity = Entities->GetDense()[Index];
 
-                return std::tuple<entity<U>, Args&...>(
-                    target_entity,
-                    m_ecs->template get_sparse_set<Args>()
-                        .get_dense()[m_ecs->template get_sparse_set<Args>()
-                                         .get_sparse()[target_entity.get_id()]]...);
+                return std::tuple<Entity<SizeType>, TComponents&...>(targetEntity, ECS->template GetSparseSet<TComponents>().GetDense()[ECS->template GetSparseSet<TComponents>().GetSparse()[targetEntity.GetID()]]...);
             }
 
-            bool operator!=(const entity_view::iterator&) const
+            bool operator!=(const EntityView::Iterator&) const
             {
-                return m_index < m_end;
+                return Index < End;
             }
 
-            entity_view::iterator& operator++()
+            EntityView::Iterator& operator++()
             {
-                ++m_index;
+                ++Index;
 
                 return *this;
             }
 
         private:
-            T* m_ecs;
+            TECS* ECS;
 
-            sparse_set<entity<U>, size_type>* m_entities;
+            SparseSet<Entity<SizeType>, SizeType>* Entities;
 
-            std::size_t m_index;
-            std::size_t m_end;
+            SizeType Index;
+            SizeType End;
         };
 
-        using const_iterator = const iterator;
+        using ConstIterator = const Iterator;
 
-        entity_view(T* ecs, sparse_set<entity<U>, size_type>& entities)
-            : m_ecs(ecs), m_entities(&entities), m_end(entities.get_dense().size())
+        EntityView(TECS* ecs, SparseSet<Entity<SizeType>, SizeType>& entities)
+            : ECS(ecs), Entities(&entities), End(entities.GetDense().size())
         {
         }
 
-        [[nodiscard]] iterator begin()
+        [[nodiscard]] Iterator begin()
         {
-            return entity_view::iterator(m_ecs, m_entities, 0, m_end);
+            return EntityView::Iterator(ECS, Entities, 0, End);
         }
 
-        [[nodiscard]] iterator end()
+        [[nodiscard]] Iterator end()
         {
-            return entity_view::iterator(m_ecs, m_entities, m_end, m_end);
+            return EntityView::Iterator(ECS, Entities, End, End);
         }
 
-        [[nodiscard]] const_iterator begin() const
+        [[nodiscard]] ConstIterator cbegin() const
         {
-            return entity_view::iterator(m_ecs, m_entities, 0, m_end);
+            return EntityView::Iterator(ECS, Entities, 0, End);
         }
 
-        [[nodiscard]] const_iterator end() const
+        [[nodiscard]] ConstIterator cend() const
         {
-            return entity_view::iterator(m_ecs, m_entities, m_end, m_end);
+            return EntityView::Iterator(ECS, Entities, End, End);
         }
 
     private:
-        T* m_ecs;
+        TECS* ECS;
 
-        std::size_t m_end;
+        SizeType End;
 
-        sparse_set<entity<U>, size_type>* m_entities;
+        SparseSet<Entity<SizeType>, SizeType>* Entities;
     };
 }
