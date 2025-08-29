@@ -1,6 +1,5 @@
 #pragma once
 
-#include <minECS/Internals/Archetype.hpp>
 #include <minECS/Internals/BitsetTree.hpp>
 #include <minECS/Internals/ECSDescriptor.hpp>
 #include <minECS/Internals/EntityView.hpp>
@@ -8,6 +7,7 @@
 #include <minECS/Internals/Traits.hpp>
 
 #include <bitset>
+#include <iostream>
 #include <tuple>
 #include <vector>
 
@@ -21,10 +21,11 @@ namespace minECS
     class ECS<ECSDescriptor<TSizeType, TComponents...>>
     {
     public:
-        using Bitset = std::bitset<sizeof...(TComponents)>;
+        using BitsetType = std::bitset<sizeof...(TComponents)>;
         using SizeType = TSizeType;
-        using Descriptor = ECSDescriptor<TSizeType, TComponents...>;
+        using DescriptorType = ECSDescriptor<TSizeType, TComponents...>;
         using EntityType = Entity<SizeType>;
+        using ArchetypeType = SparseSet<EntityType, SizeType>;
 
         ECS() = default;
         ~ECS() = default;
@@ -35,64 +36,85 @@ namespace minECS
         ECS& operator=(const ECS&) = delete;
         ECS& operator=(ECS&&) noexcept = delete;
 
-        [[nodiscard]] inline Entity<SizeType> CreateBlankEntity()
+        [[nodiscard]] inline EntityType CreateBlankEntity()
         {
             if (FreeList.empty())
             {
-                Entities.push_back({static_cast<SizeType>(Entities.size()), 0});
-                EntityMasks.push_back(Bitset{});
+                SizeType size = Entities.size();
+
+                Entities.emplace_back(size, 0);
+                EntityMasks.emplace_back();
 
                 return Entities.back();
             }
             else
             {
-                std::uint32_t index = FreeList.back();
+                SizeType index = FreeList.back();
+                EntityType& entity = Entities[index];
+                BitsetType& bitset = EntityMasks[index];
 
+                entity.GetGeneration()++;
                 FreeList.pop_back();
-                Entities[index].GetGeneration()++;
+                bitset.reset();
 
-                EntityMasks[index].reset();
-
-                return Entities[index];
+                return entity;
             }
         }
 
-        [[nodiscard]] inline std::vector<Entity<SizeType>> CreateBlankEntities(SizeType count)
+        [[nodiscard]] inline std::vector<EntityType> CreateBlankEntities(SizeType count)
         {
-            std::vector<Entity<SizeType>> entities;
+            std::vector<EntityType> entities;
 
             entities.reserve(count);
 
             for (SizeType i = 0; i < count; i++)
             {
-                entities.push_back(CreateBlankEntity());
+                EntityType entity = CreateBlankEntity();
+
+                entities.push_back(entity);
             }
 
             return entities;
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && (sizeof...(TQueried) != 0))
-        inline std::pair<bool, Entity<SizeType>> CreateEntity(TQueried&&... components)
+        requires((DescriptorType::template Contains<TQueried> && ...) && (sizeof...(TQueried) != 0))
+        [[nodiscard]] inline ValueResult<EntityType> CreateEntity(TQueried&&... components)
         {
-            Entity<SizeType> entity = CreateBlankEntity();
+            using ResultType1 = ReferenceResult<ArchetypeType>;
+            using ResultType2 = ReferenceResult<EntityType>;
 
-            auto mask = MakeBitmask<TQueried...>();
+            EntityType entity = CreateBlankEntity();
+            SizeType& id = entity.GetID();
+            BitsetType mask = MakeBitmask<TQueried...>();
 
-            EntityMasks[entity.GetID()] = mask;
+            EntityMasks[id] = mask;
 
-            bool result = Archetypes.GetOrInsert(mask).Insert(entity.GetID(), entity);
+            ResultType1 result1 = Archetypes.Insert(mask);
 
-            result &= (std::get<SparseSet<TQueried, SizeType>>(SparseSets).Insert(entity.GetID(), std::forward<TQueried>(components)) && ...);
+            if (result1.Failed())
+            {
+                return ValueResult<EntityType>(entity, false);
+            }
 
-            return {result, entity};
+            ArchetypeType& archetype = result1.GetValue();
+            ResultType2 result2 = archetype.Insert(id, entity);
+
+            if (result2.Failed())
+            {
+                return ValueResult<EntityType>(entity, false);
+            }
+
+            bool result3 = (AddEntityToSparseSet<TQueried>(entity, components) && ...);
+
+            return ValueResult<EntityType>(entity, result3);
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
-        inline std::vector<std::pair<bool, Entity<SizeType>>> CreateEntities(SizeType count, TQueried&&... components)
+        requires((DescriptorType::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
+        inline std::vector<ValueResult<EntityType>> CreateEntities(SizeType count, TQueried&&... components)
         {
-            std::vector<std::pair<bool, Entity<SizeType>>> entities;
+            std::vector<ValueResult<EntityType>> entities;
 
             entities.reserve(count);
 
@@ -104,30 +126,38 @@ namespace minECS
             return entities;
         }
 
-        [[nodiscard]] inline bool DestroyEntity(Entity<SizeType> entity)
+        [[nodiscard]] inline bool DestroyEntity(EntityType entity)
         {
             if (HasEntity(entity))
             {
-                const Bitset& bitset = EntityMasks[entity.GetID()];
+                SizeType& id = entity.GetID();
+                SizeType& generation = entity.GetGeneration();
 
-                RemoveEntityFromSparseSets(entity, bitset);
+                const BitsetType& bitset = EntityMasks[id];
+                ReferenceResult<ArchetypeType> archetypeResult = Archetypes.Get(bitset);
 
-                if (Archetype<SizeType>* archetype = Archetypes.get(bitset))
+                if (!archetypeResult.Failed())
                 {
-                    if (!archetype->Remove(entity.GetID()))
+                    RemoveEntityFromSparseSets(entity, bitset);
+
+                    auto& archetype = archetypeResult.GetValue();
+                    auto& entities = archetype->GetEntities();
+                    auto& dense = entities.GetDense();
+
+                    if (!archetype->Remove(id))
                     {
                         return false;
                     }
 
-                    if (archetype->GetEntities().GetDense().size() == 0)
+                    if (dense.size() == 0)
                     {
                         Archetypes.Remove(bitset);
                     }
                 }
 
-                FreeList.push_back(entity.GetID());
-                Entities[entity.GetID()] = {std::numeric_limits<SizeType>::max(), entity.GetGeneration()};
-                EntityMasks[entity.GetID()].reset();
+                FreeList.push_back(id);
+                Entities[id] = {std::numeric_limits<SizeType>::max(), generation};
+                EntityMasks[id].reset();
             }
             else
             {
@@ -137,7 +167,7 @@ namespace minECS
             return true;
         }
 
-        [[nodiscard]] inline bool DestroyEntities(const std::vector<Entity<SizeType>>& entities)
+        [[nodiscard]] inline bool DestroyEntities(const std::vector<EntityType>& entities)
         {
             bool result = true;
 
@@ -149,14 +179,15 @@ namespace minECS
             return result;
         }
 
-        [[nodiscard]] inline bool HasEntity(Entity<SizeType> entity) const
+        [[nodiscard]] inline bool HasEntity(EntityType entity) const
         {
-            return entity.GetID() < Entities.size() &&
-                   Entities[entity.GetID()].GetGeneration() == entity.GetGeneration() &&
-                   Entities[entity.GetID()].GetID() != std::numeric_limits<SizeType>::max();
+            SizeType& id = entity.GetID();
+            SizeType& generation = entity.GetGeneration();
+
+            return id < Entities.size() && Entities[id].GetGeneration() == generation && Entities[id].GetID() != std::numeric_limits<SizeType>::max();
         }
 
-        [[nodiscard]] inline bool HasEntities(const std::vector<Entity<SizeType>>& entities) const
+        [[nodiscard]] inline bool HasEntities(const std::vector<EntityType>& entities) const
         {
             for (const auto& entity : entities)
             {
@@ -170,29 +201,31 @@ namespace minECS
         }
 
         template <typename U>
-        requires(Descriptor::template Contains<U>)
-        [[nodiscard]] inline bool EntityHasComponent(Entity<SizeType> entity) const
+        requires(DescriptorType::template Contains<U>)
+        [[nodiscard]] inline bool EntityHasComponent(EntityType entity) const
         {
+            SizeType& id = entity.GetID();
+
             if (HasEntity(entity))
             {
-                constexpr SizeType index = Descriptor::template Index<U>();
+                constexpr SizeType index = DescriptorType::template Index<U>();
 
-                return EntityMasks[entity.GetID()].test(index);
+                return EntityMasks[id].test(index);
             }
 
             return false;
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
-        [[nodiscard]] inline bool EntityHasComponents(Entity<SizeType> entity) const
+        requires((DescriptorType::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
+        [[nodiscard]] inline bool EntityHasComponents(EntityType entity) const
         {
             return (EntityHasComponent<TQueried>(entity) && ...);
         }
 
         template <typename TComponent>
-        requires(Descriptor::template Contains<TComponent>)
-        [[nodiscard]] inline bool EntitiesHaveComponent(const std::vector<Entity<SizeType>>& entities) const
+        requires(DescriptorType::template Contains<TComponent>)
+        [[nodiscard]] inline bool EntitiesHaveComponent(const std::vector<EntityType>& entities) const
         {
             for (const auto& entity : entities)
             {
@@ -206,8 +239,8 @@ namespace minECS
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
-        [[nodiscard]] inline bool EntitiesHaveCompoennts(const std::vector<Entity<SizeType>>& entities) const
+        requires((DescriptorType::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
+        [[nodiscard]] inline bool EntitiesHaveComponents(const std::vector<EntityType>& entities) const
         {
             for (const auto& entity : entities)
             {
@@ -221,36 +254,45 @@ namespace minECS
         }
 
         template <typename TComponent>
-        requires(Descriptor::template Contains<TComponent>)
-        [[nodiscard]] inline bool AddComponentToEntity(Entity<SizeType> entity, TComponent&& component)
+        requires(DescriptorType::template Contains<TComponent>)
+        [[nodiscard]] inline bool AddComponentToEntity(EntityType entity, TComponent&& component)
         {
-            if (HasEntity(entity))
+            if (HasEntity(entity) && !EntityHasComponent<TComponent>(entity))
             {
+                SizeType& id = entity.GetID();
+
                 auto& set = std::get<SparseSet<TComponent, SizeType>>(SparseSets);
 
-                if (!set.Insert(entity.GetID(), std::forward<TComponent>(component)))
-                {
-                    return false;
-                }
+                constexpr SizeType index = DescriptorType::template Index<TComponent>();
 
-                constexpr std::size_t index = Descriptor::template Index<TComponent>();
-
-                Bitset& targetBitset = EntityMasks[entity.GetID()];
-                Bitset oldBitset = EntityMasks[entity.GetID()];
+                BitsetType& targetBitset = EntityMasks[id];
+                BitsetType oldBitset = EntityMasks[id];
 
                 targetBitset.set(index);
 
-                return update_archetype(entity, oldBitset, targetBitset);
+                bool archetypeResult = UpdateArchetype(entity, oldBitset, targetBitset);
+
+                if (archetypeResult)
+                {
+                    auto result = set.Insert(id, std::forward<TComponent>(component));
+
+                    if (result.Failed())
+                    {
+                        return false;
+                    }
+                }
+
+                return archetypeResult;
             }
-            else
-            {
-                return false;
-            }
+
+            std::cerr << "Failed to give entity " << entity.GetID() << " component\n";
+
+            return false;
         }
 
         template <typename TComponent>
-        requires(Descriptor::template Contains<TComponent>)
-        [[nodiscard]] inline bool AddComponentToEntities(const std::vector<Entity<SizeType>>& entities, TComponent&& component)
+        requires(DescriptorType::template Contains<TComponent>)
+        [[nodiscard]] inline bool AddComponentToEntities(const std::vector<EntityType>& entities, TComponent&& component)
         {
             bool result = true;
 
@@ -263,47 +305,51 @@ namespace minECS
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
-        [[nodiscard]] inline bool AddComponentsToEntity(Entity<SizeType> entity, const TQueried&... components)
+        requires((DescriptorType::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
+        [[nodiscard]] inline bool AddComponentsToEntity(EntityType entity, TQueried&&... components)
         {
-            return (AddComponentToEntity<TQueried>(entity, components) && ...);
+            return (AddComponentToEntity<TQueried>(entity, std::forward<TQueried>(components)) && ...);
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
-        [[nodiscard]] inline bool AddComponentsToEntities(const std::vector<Entity<SizeType>>& entities, const TQueried&... components)
+        requires((DescriptorType::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
+        [[nodiscard]] inline bool AddComponentsToEntities(const std::vector<EntityType>& entities, TQueried&&... components)
         {
             bool result = true;
 
             for (auto& entity : entities)
             {
-                result &= AddComponentsToEntity<TQueried...>(entity, components...);
+                result &= AddComponentsToEntity<TQueried...>(entity, std::forward<TQueried>(components)...);
             }
 
             return result;
         }
 
         template <typename TComponent>
-        requires(Descriptor::template Contains<TComponent>)
-        [[nodiscard]] inline bool RemoveComponentFromEntity(Entity<SizeType> entity)
+        requires(DescriptorType::template Contains<TComponent>)
+        [[nodiscard]] inline bool RemoveComponentFromEntity(EntityType entity)
         {
             if (HasEntity(entity))
             {
                 auto& set = std::get<SparseSet<TComponent, SizeType>>(SparseSets);
 
-                if (!set.Remove(entity.GetID()))
-                {
-                    return false;
-                }
+                SizeType& id = entity.GetID();
 
-                constexpr std::size_t index = Descriptor::template Index<TComponent>();
+                constexpr SizeType index = DescriptorType::template Index<TComponent>();
 
-                Bitset& targetBitset = EntityMasks[entity.GetID()];
-                Bitset oldBitset = EntityMasks[entity.GetID()];
+                BitsetType& targetBitset = EntityMasks[id];
+                BitsetType oldBitset = EntityMasks[id];
 
                 targetBitset.reset(index);
 
-                return UpdateArchetype(entity, oldBitset, targetBitset);
+                bool archetypeResult = UpdateArchetype(entity, oldBitset, targetBitset);
+
+                if (archetypeResult)
+                {
+                    set.Remove(id);
+                }
+
+                return archetypeResult;
             }
             else
             {
@@ -312,8 +358,8 @@ namespace minECS
         }
 
         template <typename TComponent>
-        requires(Descriptor::template Contains<TComponent>)
-        [[nodiscard]] inline bool RemoveComponentFromEntities(const std::vector<Entity<SizeType>>& entities)
+        requires(DescriptorType::template Contains<TComponent>)
+        [[nodiscard]] inline bool RemoveComponentFromEntities(const std::vector<EntityType>& entities)
         {
             bool result = true;
 
@@ -326,131 +372,168 @@ namespace minECS
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
-        [[nodiscard]] inline bool RemoveComponentsFromEntity(Entity<SizeType> entity)
+        requires((DescriptorType::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
+        [[nodiscard]] inline bool RemoveComponentsFromEntity(EntityType entity)
         {
             return (RemoveComponentFromEntity<TQueried>(entity) && ...);
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
-        [[nodiscard]] inline bool RemoveComponentsFromEntity(const std::vector<Entity<SizeType>>& entities)
+        requires((DescriptorType::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
+        [[nodiscard]] inline bool RemoveComponentsFromEntity(const std::vector<EntityType>& entities)
         {
-            bool result = true;
+            bool ReferenceResult = true;
 
             for (auto& entity : entities)
             {
-                result &= RemoveComponentsFromEntity<TQueried...>(entity);
+                ReferenceResult &= RemoveComponentsFromEntity<TQueried...>(entity);
             }
 
-            return result;
+            return ReferenceResult;
         }
 
-        [[nodiscard]] inline BitsetTree<Archetype<SizeType>, SizeType, sizeof...(TComponents)>& GetArchetypess()
+        [[nodiscard]] inline BitsetTree<ArchetypeType, SizeType, sizeof...(TComponents)>& GetArchetypess()
         {
             return Archetypes;
         }
 
-        [[nodiscard]] inline const BitsetTree<Archetype<SizeType>, SizeType, sizeof...(TComponents)>& GetArchetypes() const
+        [[nodiscard]] inline const BitsetTree<ArchetypeType, SizeType, sizeof...(TComponents)>& GetArchetypes() const
         {
             return Archetypes;
         }
 
-        [[nodiscard]] Archetype<SizeType>* GetArchetype(const Bitset& mask)
+        [[nodiscard]] ReferenceResult<ArchetypeType> GetArchetype(const BitsetType& mask)
         {
             return Archetypes.Get(mask);
         }
 
-        [[nodiscard]] const Archetype<SizeType>* GetArchetype(const Bitset& mask) const
+        [[nodiscard]] const ReferenceResult<ArchetypeType> GetArchetype(const BitsetType& mask) const
         {
             return Archetypes.Get(mask);
         }
 
         template <typename TComponent>
-        requires(Descriptor::template Contains<TComponent>)
+        requires(DescriptorType::template Contains<TComponent>)
         [[nodiscard]] inline constexpr SparseSet<TComponent, SizeType>& GetSparseSet()
         {
             return std::get<SparseSet<TComponent, SizeType>>(SparseSets);
         }
 
         template <typename TComponent>
-        requires(Descriptor::template Contains<TComponent>)
+        requires(DescriptorType::template Contains<TComponent>)
         [[nodiscard]] inline constexpr const SparseSet<TComponent, SizeType>& GetSparseSet() const
         {
             return std::get<SparseSet<TComponent, SizeType>>(SparseSets);
         }
 
         template <typename... TQueried>
-        requires((Descriptor::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
-        [[nodiscard]] static inline constexpr Bitset MakeBitmask()
+        requires((DescriptorType::template Contains<TQueried> && ...) && sizeof...(TQueried) != 0)
+        [[nodiscard]] static inline constexpr BitsetType MakeBitmask()
         {
-            Bitset bitset;
+            BitsetType bitset;
 
-            (bitset.set(Descriptor::template Index<TQueried>()), ...);
+            (bitset.set(DescriptorType::template Index<TQueried>()), ...);
 
             return bitset;
         }
 
         template <typename... TQueried>
-        requires(Descriptor::template Contains<TQueried> && ...)
-        [[nodiscard]] inline auto GetEntityView(Archetype<SizeType>& archetype)
+        requires(DescriptorType::template Contains<TQueried> && ...)
+        [[nodiscard]] inline auto GetEntityView(ArchetypeType& archetype)
         {
-            return EntityView<ECS<Descriptor>, SizeType, TQueried...>(this, archetype.GetEntities());
+            return EntityView<ECS<DescriptorType>, SizeType, TQueried...>(this, archetype);
         }
 
         template <typename... TQueried>
-        requires(Descriptor::template Contains<TQueried> && ...)
-        [[nodiscard]] inline const auto GetEntityView(Archetype<SizeType>& archetype) const
+        requires(DescriptorType::template Contains<TQueried> && ...)
+        [[nodiscard]] inline const auto GetEntityView(ArchetypeType& archetype) const
         {
-            return EntityView<ECS<Descriptor>, SizeType, TQueried...>(this, archetype.GetEntities());
+            return EntityView<ECS<DescriptorType>, SizeType, TQueried...>(this, archetype);
         }
 
     private:
-        [[nodiscard]] inline bool UpdateArchetype(Entity<SizeType> entity, const Bitset& oldBitset, const Bitset& newBitset)
+        [[nodiscard]] inline bool UpdateArchetype(EntityType entity, const BitsetType& oldBitset, const BitsetType& newBitset)
         {
+            using ResultType = ReferenceResult<ArchetypeType>;
+
             if (oldBitset == newBitset)
             {
+                std::cerr << "Failed to insert entity " << entity.GetID() << " into archetype: same bitset\n";
+
                 return false;
             }
 
-            if (Archetype<SizeType>* oldArchetype = Archetypes.Get(oldBitset))
+            ResultType result = Archetypes.Get(oldBitset);
+
+            if (!result.Failed())
             {
-                if (!oldArchetype->Remove(entity.GetID()))
+                ArchetypeType& oldArchetype = result.GetValue();
+
+                if (!oldArchetype.Remove(entity.GetID()))
                 {
+                    std::cerr << "Failed to remove entity " << entity.GetID() << " from old archetype\n";
+
                     return false;
                 }
 
-                if (oldArchetype->GetEntities().GetDense().size() == 0)
+                auto& dense = oldArchetype.GetDense();
+
+                if (dense.size() == 0)
                 {
                     Archetypes.Remove(oldBitset);
                 }
             }
 
-            if (!Archetypes.GetOrInsert(newBitset).Insert(entity.GetID(), entity))
+            ResultType insertResult = Archetypes.Insert(newBitset);
+
+            if (insertResult.Failed())
             {
+                std::cerr << "Failed to insert new archetype\n";
+
                 return false;
             }
 
-            return true;
+            auto& archetype = insertResult.GetValue();
+            auto& id = entity.GetID();
+            auto archetypeInsertResult = archetype.Insert(id, entity);
+
+            if (archetypeInsertResult.Failed())
+            {
+                std::cerr << "Failed to add entity " << entity.GetID() << " to new archetype\n";
+            }
+
+            return !archetypeInsertResult.Failed();
         }
 
         template <std::size_t... Ns>
-        inline void RemoveEntityFromSparseSetsImpl(Entity<SizeType> entity, const Bitset& mask, std::index_sequence<Ns...>)
+        inline void RemoveEntityFromSparseSetsImplementation(EntityType entity, const BitsetType& mask, std::index_sequence<Ns...>)
         {
             ((mask.test(Ns) ? std::get<Ns>(SparseSets).Remove(entity.GetID()) : void()), ...);
         }
 
-        inline void RemoveEntityFromSparseSets(Entity<SizeType> entity, const Bitset& mask)
+        inline void RemoveEntityFromSparseSets(EntityType entity, const BitsetType& mask)
         {
-            RemoveEntityFromSparseSetsImpl(entity, mask, std::index_sequence_for<TComponents...>{});
+            RemoveEntityFromSparseSetsImplementation(entity, mask, std::index_sequence_for<TComponents...>{});
+        }
+
+        template <typename T, typename U>
+        inline bool AddEntityToSparseSet(EntityType& entity, U&& component)
+        {
+            using SparseSetType = SparseSet<T, SizeType>;
+            using ResultType = ReferenceResult<typename SparseSetType::Type>;
+
+            SparseSetType& sparseSet = std::get<SparseSetType>(SparseSets);
+            ResultType result = sparseSet.Insert(entity.GetID(), std::forward<U>(component));
+
+            return !result.Failed();
         }
 
         std::tuple<SparseSet<TComponents, SizeType>...> SparseSets;
 
-        BitsetTree<Archetype<SizeType>, SizeType, sizeof...(TComponents)> Archetypes;
+        BitsetTree<ArchetypeType, SizeType, sizeof...(TComponents)> Archetypes;
 
-        std::vector<Bitset> EntityMasks;
-        std::vector<Entity<SizeType>> Entities;
+        std::vector<BitsetType> EntityMasks;
+        std::vector<EntityType> Entities;
         std::vector<SizeType> FreeList;
     };
 }

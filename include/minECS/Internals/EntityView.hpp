@@ -7,7 +7,7 @@
 namespace minECS
 {
     template <typename TECS, typename TSizeType, typename... TComponents>
-    requires IsECS<TECS> && IsSizeType<TSizeType> && ComponentsAreUnique<TComponents...> && (TECS::Descriptor::template Contains<TComponents> && ...)
+    requires IsECS<TECS> && IsSizeType<TSizeType> && ComponentsAreUnique<TComponents...> && (TECS::DescriptorType::template Contains<TComponents> && ...)
     class EntityView
     {
     public:

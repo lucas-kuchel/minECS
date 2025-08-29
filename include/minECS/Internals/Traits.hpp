@@ -51,7 +51,7 @@ namespace minECS
     inline constexpr bool IsECS<ECS<TDescriptor>> = true;
 
     template <typename T, typename TSizeType, TSizeType NBitsetSize>
-    requires IsSizeType<TSizeType> && (NBitsetSize != 0)
+    requires IsSizeType<TSizeType> && (NBitsetSize > 0)
     class BitsetTree;
 
     template <typename>

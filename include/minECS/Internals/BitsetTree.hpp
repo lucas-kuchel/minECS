@@ -1,5 +1,6 @@
 #pragma once
 
+#include <minECS/Internals/Result.hpp>
 #include <minECS/Internals/Traits.hpp>
 
 #include <bitset>
@@ -10,7 +11,7 @@
 namespace minECS
 {
     template <typename T, typename TSizeType, TSizeType NBitsetSize>
-    requires IsSizeType<TSizeType> && (NBitsetSize != 0)
+    requires IsSizeType<TSizeType> && (NBitsetSize > 0)
     class BitsetTree
     {
     public:
@@ -23,8 +24,8 @@ namespace minECS
         static constexpr SizeType RoundedSize = (BitsetSize + 7) / 8 * 8;
         static constexpr SizeType LevelCount = RoundedSize / 8;
 
-        using iterator = std::vector<std::pair<std::bitset<BitsetSize>, Type>>::iterator;
-        using const_iterator = std::vector<std::pair<std::bitset<BitsetSize>, Type>>::const_iterator;
+        using Iterator = std::vector<std::pair<std::bitset<BitsetSize>, Type>>::iterator;
+        using ConstIterator = std::vector<std::pair<std::bitset<BitsetSize>, Type>>::const_iterator;
 
         BitsetTree()
         {
@@ -85,15 +86,15 @@ namespace minECS
             RemoveRecursive(Root, bitset, 0);
         }
 
-        Type& GetOrInsert(const std::bitset<BitsetSize>& bitset)
+        [[nodiscard]] ReferenceResult<Type> Insert(const std::bitset<BitsetSize>& bitset)
         {
             Node* current = Root;
 
             for (SizeType level = 0; level < LevelCount; level++)
             {
                 std::uint8_t key = GetByte(bitset, level);
-
                 Node*& next = current->Children[key];
+
                 if (!next)
                 {
                     next = Pool.Allocate();
@@ -107,12 +108,14 @@ namespace minECS
             {
                 current->ArchetypeIndex = Contiguous.size();
                 Contiguous.emplace_back(bitset, T{});
+
+                return ReferenceResult<Type>(&Contiguous[current->ArchetypeIndex.value()].second, true);
             }
 
-            return Contiguous[current->ArchetypeIndex.value()].second;
+            return ReferenceResult<Type>(&Contiguous[current->ArchetypeIndex.value()].second, false);
         }
 
-        [[nodiscard]] Type* Get(const std::bitset<BitsetSize>& bitset)
+        [[nodiscard]] ReferenceResult<Type> Get(const std::bitset<BitsetSize>& bitset)
         {
             Node* current = Root;
 
@@ -124,7 +127,7 @@ namespace minECS
 
                 if (!next)
                 {
-                    return nullptr;
+                    return ReferenceResult<Type>(nullptr, false);
                 }
 
                 current = next;
@@ -132,13 +135,13 @@ namespace minECS
 
             if (!current->ArchetypeIndex.has_value())
             {
-                return nullptr;
+                return ReferenceResult<Type>(nullptr, false);
             }
 
-            return &Contiguous[current->ArchetypeIndex.value()].second;
+            return ReferenceResult<Type>(&Contiguous[current->ArchetypeIndex.value()].second, true);
         }
 
-        [[nodiscard]] const Type* Get(const std::bitset<BitsetSize>& bitset) const
+        [[nodiscard]] const ReferenceResult<Type> Get(const std::bitset<BitsetSize>& bitset) const
         {
             Node* current = Root;
 
@@ -150,7 +153,7 @@ namespace minECS
 
                 if (!next)
                 {
-                    return nullptr;
+                    return ReferenceResult<Type>(nullptr, false);
                 }
 
                 current = next;
@@ -158,28 +161,28 @@ namespace minECS
 
             if (!current->ArchetypeIndex.has_value())
             {
-                return nullptr;
+                return ReferenceResult<Type>(nullptr, false);
             }
 
-            return &Contiguous[current->ArchetypeIndex.value()].second;
+            return ReferenceResult<Type>(&Contiguous[current->ArchetypeIndex.value()].second, true);
         }
 
-        [[nodiscard]] iterator begin()
+        [[nodiscard]] Iterator begin()
         {
             return Contiguous.begin();
         }
 
-        [[nodiscard]] iterator end()
+        [[nodiscard]] Iterator end()
         {
             return Contiguous.end();
         }
 
-        [[nodiscard]] const_iterator begin() const
+        [[nodiscard]] ConstIterator begin() const
         {
             return Contiguous.begin();
         }
 
-        [[nodiscard]] const_iterator end() const
+        [[nodiscard]] ConstIterator end() const
         {
             return Contiguous.end();
         }
@@ -277,7 +280,7 @@ namespace minECS
 
         [[nodiscard]] static std::uint8_t GetByte(const std::bitset<BitsetSize>& bs, SizeType byteIndex)
         {
-            std::uint8_t result = 0;
+            std::uint8_t ReferenceResult = 0;
 
             for (SizeType i = 0; i < 8; i++)
             {
@@ -285,11 +288,11 @@ namespace minECS
 
                 if (bitIndex < BitsetSize && bs[bitIndex])
                 {
-                    result |= (1 << i);
+                    ReferenceResult |= (1 << i);
                 }
             }
 
-            return result;
+            return ReferenceResult;
         }
 
         bool RemoveRecursive(Node*& current, const std::bitset<BitsetSize>& bitset, SizeType level)

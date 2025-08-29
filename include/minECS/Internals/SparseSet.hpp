@@ -1,5 +1,6 @@
 #pragma once
 
+#include <minECS/Internals/Result.hpp>
 #include <minECS/Internals/Traits.hpp>
 
 #include <limits>
@@ -29,7 +30,7 @@ namespace minECS
 
         static constexpr SizeType DeadIndex = std::numeric_limits<SizeType>::max();
 
-        [[nodiscard]] inline bool Insert(SizeType index, const T& element)
+        [[nodiscard]] inline ReferenceResult<Type> Insert(SizeType index, const Type& element)
         {
             if (index >= Sparse.size())
             {
@@ -38,7 +39,7 @@ namespace minECS
 
             if (Sparse[index] != DeadIndex)
             {
-                return false;
+                return ReferenceResult<Type>(&Dense[Sparse[index]], false);
             }
 
             Sparse[index] = Dense.size();
@@ -46,38 +47,12 @@ namespace minECS
             Dense.push_back(element);
             ReverseMapping.push_back(index);
 
-            return true;
-        }
-
-        template <typename... Args>
-        [[nodiscard]] inline bool Insert(SizeType index, Args&&... args)
-        {
-            if (index >= Sparse.size())
-            {
-                Sparse.resize(index + 1, DeadIndex);
-            }
-
-            if (Sparse[index] != DeadIndex)
-            {
-                return false;
-            }
-
-            Sparse[index] = Dense.size();
-
-            Dense.emplace_back(std::forward<Args>(args)...);
-            ReverseMapping.push_back(index);
-
-            return true;
+            return ReferenceResult<Type>(&Dense[Sparse[index]], true);
         }
 
         [[nodiscard]] inline bool Remove(SizeType index)
         {
-            if (index >= Sparse.size())
-            {
-                return false;
-            }
-
-            if (Sparse[index] == DeadIndex)
+            if (index >= Sparse.size() || Sparse[index] == DeadIndex)
             {
                 return false;
             }
@@ -91,67 +66,47 @@ namespace minECS
 
                 Dense.pop_back();
                 ReverseMapping.pop_back();
-
-                return true;
             }
+            else
+            {
+                SizeType lastEntity = ReverseMapping[lastIndex];
 
-            SizeType lastEntity = ReverseMapping[lastIndex];
+                Dense[denseIndex] = std::move(Dense[lastIndex]);
+                ReverseMapping[denseIndex] = lastEntity;
+                Sparse[lastEntity] = denseIndex;
 
-            Dense[denseIndex] = std::move(Dense[lastIndex]);
-            ReverseMapping[denseIndex] = lastEntity;
-            Sparse[lastEntity] = denseIndex;
+                Sparse[index] = DeadIndex;
 
-            Sparse[index] = DeadIndex;
-
-            Dense.pop_back();
-            ReverseMapping.pop_back();
+                Dense.pop_back();
+                ReverseMapping.pop_back();
+            }
 
             return true;
         }
 
-        [[nodiscard]] inline Type* Get(SizeType index)
+        [[nodiscard]] inline ReferenceResult<Type> Get(SizeType index)
         {
-            if (index >= Sparse.size())
+            if (index >= Sparse.size() || Sparse[index] == DeadIndex)
             {
-                return nullptr;
+                return ReferenceResult<Type>(nullptr, false);
             }
 
-            if (Sparse[index] == DeadIndex)
-            {
-                return nullptr;
-            }
-
-            return &Dense[Sparse[index]];
+            return ReferenceResult<Type>(&Dense[Sparse[index]], true);
         }
 
-        [[nodiscard]] inline const Type* Get(SizeType index) const
+        [[nodiscard]] inline const ReferenceResult<Type> Get(SizeType index) const
         {
-            if (index >= Sparse.size())
+            if (index >= Sparse.size() || Sparse[index] == DeadIndex)
             {
-                return nullptr;
+                return ReferenceResult<Type>(nullptr, false);
             }
 
-            if (Sparse[index] == DeadIndex)
-            {
-                return nullptr;
-            }
-
-            return &Dense[Sparse[index]];
+            return ReferenceResult<Type>(&Dense[Sparse[index]], true);
         }
 
         [[nodiscard]] inline bool Contains(SizeType index) const
         {
-            if (index >= Sparse.size())
-            {
-                return false;
-            }
-
-            if (Sparse[index] == DeadIndex)
-            {
-                return false;
-            }
-
-            return true;
+            return index < Sparse.size() && Sparse[index] != DeadIndex;
         }
 
         [[nodiscard]] inline Iterator begin() noexcept
